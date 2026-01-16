@@ -13,7 +13,7 @@ local config = {
     addButtonWidth = 40,
     utilityButtonWidth = 28,
     initialSlots = 3,
-    elementsPerSlot = 4,  -- bg, border, title, status
+    elementsPerSlot = 5,  -- bg, border, title, status, notification badge
     baseElements = 6,     -- dock bg + border + help btn + help text + minimize btn + minimize text
     windowCaptureDelay = 0.3,
     windowCaptureRetries = 5,
@@ -32,7 +32,9 @@ local config = {
         minBtnText = { red = 0.6, green = 0.6, blue = 0.9, alpha = 1 },
         helpBtnBg = { red = 0.2, green = 0.18, blue = 0.12, alpha = 1 },
         helpBtnText = { red = 0.9, green = 0.8, blue = 0.5, alpha = 1 },
-    }
+        notificationBadge = { red = 1, green = 0.3, blue = 0.3, alpha = 1 },
+    },
+    notificationBadgeSize = 12,
 }
 
 -- State
@@ -100,7 +102,7 @@ cleanup()  -- Clean up any previous instance
 local function initSlots()
     for i = 1, slotCount do
         if not slots[i] then
-            slots[i] = { windowId = nil, customName = nil, pending = false }
+            slots[i] = { windowId = nil, customName = nil, pending = false, hasNotification = false }
         end
     end
 end
@@ -150,6 +152,33 @@ local function getWindowTitle(win)
         title = title:sub(1, 15) .. "..."
     end
     return title
+end
+
+-- Find slot index by window ID
+local function findSlotByWindowId(windowId)
+    if not windowId then return nil end
+    for i, slot in ipairs(slots) do
+        if slot.windowId == windowId then
+            return i
+        end
+    end
+    return nil
+end
+
+-- Set notification for a slot (only if window is not focused)
+local function setSlotNotification(slotIndex)
+    local slot = slots[slotIndex]
+    if not slot then return end
+
+    local win = getWindow(slot.windowId)
+    if win then
+        local focusedWin = hs.window.focusedWindow()
+        -- Only show notification if window is not currently focused
+        if not focusedWin or focusedWin:id() ~= slot.windowId then
+            slot.hasNotification = true
+            updateSlotDisplay(slotIndex)
+        end
+    end
 end
 
 -- Tooltip helpers
@@ -363,6 +392,7 @@ local function updateSlotDisplay(slotIndex)
         if not slot.pending then
             slot.windowId = nil
             slot.customName = nil
+            slot.hasNotification = false
             title = "Empty"
             status = "click to open"
         else
@@ -380,6 +410,12 @@ local function updateSlotDisplay(slotIndex)
     end
     if dock[baseIdx + 3] then
         dock[baseIdx + 3].text = status
+    end
+    -- Update notification badge visibility
+    if dock[baseIdx + 4] then
+        dock[baseIdx + 4].fillColor = slot.hasNotification
+            and config.colors.notificationBadge
+            or { red = 0, green = 0, blue = 0, alpha = 0 }
     end
 end
 
@@ -454,6 +490,9 @@ local function onSlotClick(slotIndex, isOptionClick)
         return
     end
 
+    -- Clear notification when clicked
+    slot.hasNotification = false
+
     local win = getWindow(slot.windowId)
     if win then
         if win:isMinimized() then
@@ -491,7 +530,7 @@ end
 -- Add a new slot and launch terminal
 local function addSlot()
     slotCount = slotCount + 1
-    slots[slotCount] = { windowId = nil, customName = nil, pending = false }
+    slots[slotCount] = { windowId = nil, customName = nil, pending = false, hasNotification = false }
 
     if dock then
         dock:delete()
@@ -625,6 +664,16 @@ createDock = function()
             textSize = 10,
             textFont = ".AppleSystemUIFont",
         })
+
+        -- Notification badge (top-right corner of slot, overlapping edge like app badges)
+        local badgeSize = config.notificationBadgeSize
+        dock:appendElements({
+            type = "circle",
+            action = "fill",
+            center = { x = slotX + config.slotWidth - badgeSize/3, y = config.margin + badgeSize/3 },
+            radius = badgeSize / 2,
+            fillColor = { red = 0, green = 0, blue = 0, alpha = 0 },  -- Hidden by default
+        })
     end
 
     -- Add button (right side)
@@ -713,8 +762,33 @@ windowFilter:subscribe({
     hs.window.filter.windowDestroyed,
     hs.window.filter.windowMinimized,
     hs.window.filter.windowUnminimized,
-    hs.window.filter.windowFocused,
 }, updateAllSlots)
+
+-- Clear notification when window is focused
+windowFilter:subscribe(hs.window.filter.windowFocused, function(win)
+    if win then
+        local slotIndex = findSlotByWindowId(win:id())
+        if slotIndex then
+            slots[slotIndex].hasNotification = false
+        end
+    end
+    updateAllSlots()
+end)
+
+-- Watch for window title changes (indicates terminal activity)
+windowFilter:subscribe(hs.window.filter.windowTitleChanged, function(win)
+    if win then
+        local slotIndex = findSlotByWindowId(win:id())
+        if slotIndex then
+            local focusedWin = hs.window.focusedWindow()
+            -- Only show notification if this window isn't focused
+            if not focusedWin or focusedWin:id() ~= win:id() then
+                slots[slotIndex].hasNotification = true
+                updateSlotDisplay(slotIndex)
+            end
+        end
+    end
+end)
 
 -- Periodic refresh as fallback
 updateTimer = hs.timer.doEvery(2, function()
@@ -796,6 +870,26 @@ if showRepositionedMsg then
     hs.timer.doAfter(1.5, function()
         hs.alert.show("Positioned above macOS Dock")
     end)
+end
+
+-- Global function to trigger notification on a slot (for testing or external use)
+-- Usage: triggerNotification(1) to trigger on slot 1
+function triggerNotification(slotIndex)
+    if slotIndex and slots[slotIndex] then
+        setSlotNotification(slotIndex)
+        return true
+    end
+    return false
+end
+
+-- Global function to clear notification on a slot
+function clearNotification(slotIndex)
+    if slotIndex and slots[slotIndex] then
+        slots[slotIndex].hasNotification = false
+        updateSlotDisplay(slotIndex)
+        return true
+    end
+    return false
 end
 
 -- ===================
@@ -972,6 +1066,44 @@ function runTests()
 
     test("hideHelpPanel is a function", function()
         assert(type(hideHelpPanel) == "function", "hideHelpPanel should be a function")
+    end)
+
+    -- Notification badge tests
+    test("config has notification badge color", function()
+        assert(config.colors.notificationBadge, "notificationBadge color should exist")
+        assert(config.notificationBadgeSize, "notificationBadgeSize should exist")
+    end)
+
+    test("slots have hasNotification field", function()
+        slots = {}
+        slotCount = 2
+        initSlots()
+        assert(slots[1].hasNotification == false, "slot should have hasNotification = false")
+        restore()
+    end)
+
+    test("findSlotByWindowId returns nil for unknown window", function()
+        assertEqual(findSlotByWindowId(999999999), nil)
+    end)
+
+    test("findSlotByWindowId returns nil for nil input", function()
+        assertEqual(findSlotByWindowId(nil), nil)
+    end)
+
+    test("triggerNotification is a function", function()
+        assert(type(triggerNotification) == "function", "triggerNotification should be a function")
+    end)
+
+    test("clearNotification is a function", function()
+        assert(type(clearNotification) == "function", "clearNotification should be a function")
+    end)
+
+    test("triggerNotification returns false for invalid slot", function()
+        assertEqual(triggerNotification(9999), false)
+    end)
+
+    test("clearNotification returns false for invalid slot", function()
+        assertEqual(clearNotification(9999), false)
     end)
 
     print("\n=== Results: " .. passed .. " passed, " .. failed .. " failed ===\n")
