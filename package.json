@@ -1,6 +1,6 @@
 {
   "name": "claude-dock",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "A lightweight terminal dock for macOS to manage Claude Code sessions",
   "bin": {
     "claude-dock": "bin/cli.js"

@@ -14,7 +14,7 @@ local config = {
     utilityButtonWidth = 28,
     initialSlots = 3,
     elementsPerSlot = 4,  -- bg, border, title, status
-    baseElements = 4,     -- dock bg + border + minimize btn + minimize text
+    baseElements = 6,     -- dock bg + border + help btn + help text + minimize btn + minimize text
     windowCaptureDelay = 0.3,
     windowCaptureRetries = 5,
     colors = {
@@ -30,6 +30,8 @@ local config = {
         addBtnText = { red = 0.6, green = 0.8, blue = 0.6, alpha = 1 },
         minBtnBg = { red = 0.18, green = 0.18, blue = 0.25, alpha = 1 },
         minBtnText = { red = 0.6, green = 0.6, blue = 0.9, alpha = 1 },
+        helpBtnBg = { red = 0.2, green = 0.18, blue = 0.12, alpha = 1 },
+        helpBtnText = { red = 0.9, green = 0.8, blue = 0.5, alpha = 1 },
     }
 }
 
@@ -38,6 +40,28 @@ local slotCount = config.initialSlots
 local slots = {}
 local dock = nil
 local tooltip = nil
+local helpPanel = nil
+local macOSDockAtBottom = false
+
+-- Check macOS dock position
+local function getMacOSDockPosition()
+    local output, status = hs.execute("defaults read com.apple.dock orientation 2>/dev/null")
+    if status and output then
+        output = output:gsub("%s+", "")
+        if output == "left" or output == "right" then
+            return output
+        end
+    end
+    return "bottom"  -- default
+end
+
+-- Get macOS dock size (tile size + magnification consideration)
+local function getMacOSDockHeight()
+    local tileSize = hs.execute("defaults read com.apple.dock tilesize 2>/dev/null")
+    tileSize = tonumber(tileSize) or 48
+    -- Add padding for dock chrome and gaps
+    return tileSize + 20
+end
 
 -- Resource handles (for cleanup on reload)
 local windowFilter = nil
@@ -65,6 +89,10 @@ local function cleanup()
     if tooltip then
         tooltip:delete()
         tooltip = nil
+    end
+    if helpPanel then
+        helpPanel:delete()
+        helpPanel = nil
     end
 end
 cleanup()  -- Clean up any previous instance
@@ -96,9 +124,14 @@ local function getDockFrame()
     local frame = screen:fullFrame()
     local dockWidth = getDockWidth()
     local dockHeight = getDockHeight()
+    local bottomOffset = config.bottomOffset
+    -- Add extra offset if macOS dock is at bottom
+    if macOSDockAtBottom then
+        bottomOffset = bottomOffset + getMacOSDockHeight()
+    end
     return {
         x = (frame.w - dockWidth) / 2,
-        y = frame.h - dockHeight - config.bottomOffset,
+        y = frame.h - dockHeight - bottomOffset,
         w = dockWidth,
         h = dockHeight
     }
@@ -155,11 +188,11 @@ local function showButtonTooltip(text, buttonId)
     local tipHeight = 24
     local btnX, btnWidth
 
-    if buttonId == "minBtn" then
-        -- Left side utility button
+    if buttonId == "minBtn" or buttonId == "helpBtn" then
+        -- Left side utility buttons
         btnX = dockFrame.x + config.margin
         btnWidth = config.utilityButtonWidth
-    else
+    elseif buttonId == "addBtn" then
         -- Right side add button
         btnX = dockFrame.x + config.margin + config.utilityButtonWidth + config.gap + (slotCount * config.slotWidth) + (slotCount * config.gap)
         btnWidth = config.addButtonWidth
@@ -176,6 +209,128 @@ local function hideTooltip()
         tooltip:delete()
         tooltip = nil
     end
+end
+
+-- Help panel
+local function hideHelpPanel()
+    if helpPanel then
+        helpPanel:delete()
+        helpPanel = nil
+    end
+end
+
+local function showHelpPanel()
+    if helpPanel then
+        hideHelpPanel()
+        return
+    end
+
+    local screen = hs.screen.mainScreen()
+    if not screen then return end
+    local screenFrame = screen:fullFrame()
+
+    local panelWidth = 280
+    local panelHeight = 260
+    local panelX = (screenFrame.w - panelWidth) / 2
+    local panelY = (screenFrame.h - panelHeight) / 2
+
+    helpPanel = hs.canvas.new({ x = panelX, y = panelY, w = panelWidth, h = panelHeight })
+
+    -- Background
+    helpPanel:appendElements({
+        type = "rectangle",
+        action = "fill",
+        roundedRectRadii = { xRadius = 12, yRadius = 12 },
+        fillColor = { red = 0.1, green = 0.1, blue = 0.1, alpha = 0.95 },
+        frame = { x = 0, y = 0, w = "100%", h = "100%" },
+    })
+
+    -- Border
+    helpPanel:appendElements({
+        type = "rectangle",
+        action = "stroke",
+        roundedRectRadii = { xRadius = 12, yRadius = 12 },
+        strokeColor = { red = 1, green = 1, blue = 1, alpha = 0.2 },
+        strokeWidth = 1,
+        frame = { x = 0, y = 0, w = "100%", h = "100%" },
+    })
+
+    -- Title
+    helpPanel:appendElements({
+        type = "text",
+        frame = { x = 0, y = 15, w = panelWidth, h = 24 },
+        text = "Claude Dock Shortcuts",
+        textAlignment = "center",
+        textColor = { red = 1, green = 1, blue = 1, alpha = 1 },
+        textSize = 16,
+        textFont = ".AppleSystemUIFontBold",
+    })
+
+    -- Shortcuts list
+    local shortcuts = {
+        { key = "⌘⌥T", desc = "Toggle dock" },
+        { key = "⌘⌥N", desc = "Add new terminal" },
+        { key = "⌘⌥M", desc = "Minimize all terminals" },
+        { key = "⌘⌥R", desc = "Reload config" },
+        { key = "⌘⌥L", desc = "Move macOS Dock left" },
+        { key = "⌘⌥B", desc = "Move macOS Dock bottom" },
+        { key = "⌥+Click", desc = "Rename slot" },
+    }
+
+    local startY = 50
+    for i, shortcut in ipairs(shortcuts) do
+        local y = startY + ((i - 1) * 24)
+        helpPanel:appendElements({
+            type = "text",
+            frame = { x = 20, y = y, w = 70, h = 20 },
+            text = shortcut.key,
+            textAlignment = "left",
+            textColor = { red = 0.6, green = 0.8, blue = 1, alpha = 1 },
+            textSize = 13,
+            textFont = ".AppleSystemUIFont",
+        })
+        helpPanel:appendElements({
+            type = "text",
+            frame = { x = 95, y = y, w = 170, h = 20 },
+            text = shortcut.desc,
+            textAlignment = "left",
+            textColor = { red = 0.8, green = 0.8, blue = 0.8, alpha = 1 },
+            textSize = 13,
+            textFont = ".AppleSystemUIFont",
+        })
+    end
+
+    -- Close button
+    local closeBtnY = panelHeight - 45
+    helpPanel:appendElements({
+        type = "rectangle",
+        action = "fill",
+        frame = { x = (panelWidth - 80) / 2, y = closeBtnY, w = 80, h = 30 },
+        roundedRectRadii = { xRadius = 6, yRadius = 6 },
+        fillColor = { red = 0.25, green = 0.25, blue = 0.25, alpha = 1 },
+        trackMouseUp = true,
+        id = "closeBtn",
+    })
+    helpPanel:appendElements({
+        type = "text",
+        frame = { x = (panelWidth - 80) / 2, y = closeBtnY + 6, w = 80, h = 20 },
+        text = "Close",
+        textAlignment = "center",
+        textColor = { red = 0.9, green = 0.9, blue = 0.9, alpha = 1 },
+        textSize = 13,
+        textFont = ".AppleSystemUIFont",
+        trackMouseUp = true,
+        id = "closeBtn",
+    })
+
+    helpPanel:mouseCallback(function(_, event, id)
+        if event == "mouseUp" and id == "closeBtn" then
+            hideHelpPanel()
+        end
+    end)
+
+    helpPanel:level(hs.canvas.windowLevels.modalPanel)
+    helpPanel:show()
 end
 
 -- Forward declarations
@@ -374,14 +529,41 @@ createDock = function()
         frame = { x = 0, y = 0, w = "100%", h = "100%" },
     })
 
-    -- Minimize button (left side, small utility style)
-    local minBtnX = config.margin
-    local minBtnHeight = 28
-    local minBtnY = config.margin + (config.slotHeight - minBtnHeight) / 2
+    -- Utility buttons (left side, stacked: help on top, minimize on bottom)
+    local utilBtnX = config.margin
+    local btnGap = 4
+    local btnHeight = (config.slotHeight - btnGap) / 2
+
+    -- Help button (top)
+    local helpBtnY = config.margin
     dock:appendElements({
         type = "rectangle",
         action = "fill",
-        frame = { x = minBtnX, y = minBtnY, w = config.utilityButtonWidth, h = minBtnHeight },
+        frame = { x = utilBtnX, y = helpBtnY, w = config.utilityButtonWidth, h = btnHeight },
+        roundedRectRadii = { xRadius = 6, yRadius = 6 },
+        fillColor = config.colors.helpBtnBg,
+        trackMouseUp = true,
+        trackMouseEnterExit = true,
+        id = "helpBtn",
+    })
+    dock:appendElements({
+        type = "text",
+        frame = { x = utilBtnX, y = helpBtnY + 4, w = config.utilityButtonWidth, h = btnHeight },
+        text = "?",
+        textAlignment = "center",
+        textColor = config.colors.helpBtnText,
+        textSize = 16,
+        textFont = ".AppleSystemUIFontBold",
+        trackMouseUp = true,
+        id = "helpBtn",
+    })
+
+    -- Minimize button (bottom)
+    local minBtnY = config.margin + btnHeight + btnGap
+    dock:appendElements({
+        type = "rectangle",
+        action = "fill",
+        frame = { x = utilBtnX, y = minBtnY, w = config.utilityButtonWidth, h = btnHeight },
         roundedRectRadii = { xRadius = 6, yRadius = 6 },
         fillColor = config.colors.minBtnBg,
         trackMouseUp = true,
@@ -390,11 +572,11 @@ createDock = function()
     })
     dock:appendElements({
         type = "text",
-        frame = { x = minBtnX, y = minBtnY + 2, w = config.utilityButtonWidth, h = minBtnHeight },
+        frame = { x = utilBtnX, y = minBtnY + 4, w = config.utilityButtonWidth, h = btnHeight },
         text = "⌄",
         textAlignment = "center",
         textColor = config.colors.minBtnText,
-        textSize = 18,
+        textSize = 16,
         textFont = ".AppleSystemUIFont",
         trackMouseUp = true,
         id = "minBtn",
@@ -475,6 +657,8 @@ createDock = function()
                 addSlot()
             elseif id == "minBtn" then
                 minimizeAllTerminals()
+            elseif id == "helpBtn" then
+                showHelpPanel()
             elseif id and id:match("^slot") then
                 local idx = tonumber(id:match("%d+"))
                 if idx then
@@ -487,8 +671,10 @@ createDock = function()
                 showButtonTooltip("⌘⌥N", "addBtn")
             elseif id == "minBtn" then
                 showButtonTooltip("⌘⌥M", "minBtn")
+            elseif id == "helpBtn" then
+                showButtonTooltip("Help", "helpBtn")
             end
-        elseif event == "mouseExit" and (id == "addBtn" or id == "minBtn") then
+        elseif event == "mouseExit" and (id == "addBtn" or id == "minBtn" or id == "helpBtn") then
             hideTooltip()
         end
     end)
@@ -548,7 +734,53 @@ screenWatcher = hs.screen.watcher.new(function()
 end)
 screenWatcher:start()
 
+-- Move macOS dock position
+local function moveMacOSDockLeft()
+    hs.execute("defaults write com.apple.dock orientation left && killall Dock")
+    macOSDockAtBottom = false
+    hs.alert.show("macOS Dock moved to left")
+    -- Reposition Claude Dock
+    if dock then
+        local frame = getDockFrame()
+        if frame then dock:frame(frame) end
+    end
+end
+
+local function moveMacOSDockBottom()
+    hs.execute("defaults write com.apple.dock orientation bottom && killall Dock")
+    macOSDockAtBottom = true
+    hs.alert.show("macOS Dock moved to bottom")
+    -- Reposition Claude Dock
+    if dock then
+        local frame = getDockFrame()
+        if frame then dock:frame(frame) end
+    end
+end
+
+-- Check macOS dock and prompt user if at bottom
+-- Returns true if user chose to keep dock at bottom
+local function checkMacOSDockOnStartup()
+    local position = getMacOSDockPosition()
+    if position == "bottom" then
+        local button = hs.dialog.blockAlert(
+            "macOS Dock Position",
+            "Your macOS Dock is at the bottom of the screen, which may overlap with Claude Dock.\n\nWould you like to move it to the left side?",
+            "Move to Left",
+            "Keep at Bottom"
+        )
+        if button == "Move to Left" then
+            moveMacOSDockLeft()
+            return false
+        else
+            macOSDockAtBottom = true
+            return true
+        end
+    end
+    return false
+end
+
 -- Initialize
+local showRepositionedMsg = checkMacOSDockOnStartup()
 createDock()
 
 -- Hotkeys
@@ -556,8 +788,15 @@ hs.hotkey.bind({"cmd", "alt"}, "T", toggleDock)
 hs.hotkey.bind({"cmd", "alt"}, "N", addSlot)
 hs.hotkey.bind({"cmd", "alt"}, "M", minimizeAllTerminals)
 hs.hotkey.bind({"cmd", "alt"}, "R", hs.reload)
+hs.hotkey.bind({"cmd", "alt"}, "L", moveMacOSDockLeft)
+hs.hotkey.bind({"cmd", "alt"}, "B", moveMacOSDockBottom)
 
 hs.alert.show("Claude Dock Ready")
+if showRepositionedMsg then
+    hs.timer.doAfter(1.5, function()
+        hs.alert.show("Positioned above macOS Dock")
+    end)
+end
 
 -- ===================
 -- TESTS (run with: hs -c "runTests()")
@@ -702,6 +941,37 @@ function runTests()
         local ok = pcall(minimizeAllTerminals)
         restore()
         assert(ok, "should not error with invalid windowIds")
+    end)
+
+    test("moveMacOSDockLeft is a function", function()
+        assert(type(moveMacOSDockLeft) == "function", "moveMacOSDockLeft should be a function")
+    end)
+
+    test("moveMacOSDockBottom is a function", function()
+        assert(type(moveMacOSDockBottom) == "function", "moveMacOSDockBottom should be a function")
+    end)
+
+    test("getMacOSDockPosition returns valid position", function()
+        local pos = getMacOSDockPosition()
+        assert(pos == "left" or pos == "right" or pos == "bottom", "position should be left, right, or bottom")
+    end)
+
+    test("getMacOSDockHeight returns number", function()
+        local height = getMacOSDockHeight()
+        assert(type(height) == "number", "height should be a number")
+        assert(height > 0, "height should be positive")
+    end)
+
+    test("checkMacOSDockOnStartup is a function", function()
+        assert(type(checkMacOSDockOnStartup) == "function", "checkMacOSDockOnStartup should be a function")
+    end)
+
+    test("showHelpPanel is a function", function()
+        assert(type(showHelpPanel) == "function", "showHelpPanel should be a function")
+    end)
+
+    test("hideHelpPanel is a function", function()
+        assert(type(hideHelpPanel) == "function", "hideHelpPanel should be a function")
     end)
 
     print("\n=== Results: " .. passed .. " passed, " .. failed .. " failed ===\n")

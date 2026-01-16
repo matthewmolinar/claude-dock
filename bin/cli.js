@@ -159,6 +159,11 @@ async function main() {
   log(`  ${colors.dim}⌘⌥T${colors.reset}  Toggle dock`);
   log(`  ${colors.dim}⌘⌥N${colors.reset}  Add new terminal`);
   log(`  ${colors.dim}⌘⌥R${colors.reset}  Reload config`);
+  log(`  ${colors.dim}⌘⌥L${colors.reset}  Move macOS Dock to left`);
+  log(`  ${colors.dim}⌘⌥B${colors.reset}  Move macOS Dock to bottom`);
+  log('');
+  log(`${colors.yellow}Tip:${colors.reset} If your macOS Dock is at the bottom, you'll be prompted to move it.`);
+  log(`  You can change this anytime with ${colors.dim}⌘⌥L${colors.reset} (left) or ${colors.dim}⌘⌥B${colors.reset} (bottom).`);
   log('');
 }
 
