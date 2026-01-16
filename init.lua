@@ -1,60 +1,111 @@
--- Terminal Dock for Claude Code
+-- Claude Dock: Terminal dock for managing Claude Code sessions
+-- https://github.com/YOUR_USERNAME/claude-dock
+
 require("hs.ipc")
 
 -- Configuration
-local slotWidth = 140
-local slotHeight = 60
-local gap = 8
-local margin = 10
-local bottomOffset = 5
-local addButtonWidth = 40
+local config = {
+    slotWidth = 140,
+    slotHeight = 60,
+    gap = 8,
+    margin = 10,
+    bottomOffset = 5,
+    addButtonWidth = 40,
+    initialSlots = 3,
+    elementsPerSlot = 4,  -- bg, border, title, status
+    baseElements = 2,     -- dock bg + border
+    windowCaptureDelay = 0.3,
+    windowCaptureRetries = 5,
+    colors = {
+        dockBg = { red = 0.08, green = 0.08, blue = 0.08, alpha = 0.95 },
+        dockBorder = { red = 1, green = 1, blue = 1, alpha = 0.1 },
+        slotEmpty = { red = 0.15, green = 0.15, blue = 0.15, alpha = 1 },
+        slotActive = { red = 0.1, green = 0.2, blue = 0.1, alpha = 1 },
+        slotMinimized = { red = 0.12, green = 0.12, blue = 0.18, alpha = 1 },
+        slotBorder = { red = 1, green = 1, blue = 1, alpha = 0.15 },
+        textPrimary = { red = 0.9, green = 0.9, blue = 0.9, alpha = 1 },
+        textSecondary = { red = 0.5, green = 0.5, blue = 0.5, alpha = 1 },
+        addBtnBg = { red = 0.2, green = 0.25, blue = 0.2, alpha = 1 },
+        addBtnText = { red = 0.6, green = 0.8, blue = 0.6, alpha = 1 },
+    }
+}
 
--- Dynamic slot count
-local slotCount = 3  -- Start with 3 slots
-
--- Track terminal windows for each slot
+-- State
+local slotCount = config.initialSlots
 local slots = {}
+local dock = nil
+
+-- Resource handles (for cleanup on reload)
+local windowFilter = nil
+local updateTimer = nil
+local screenWatcher = nil
+
+-- Cleanup previous instances on reload
+local function cleanup()
+    if windowFilter then
+        windowFilter:unsubscribeAll()
+        windowFilter = nil
+    end
+    if updateTimer then
+        updateTimer:stop()
+        updateTimer = nil
+    end
+    if screenWatcher then
+        screenWatcher:stop()
+        screenWatcher = nil
+    end
+    if dock then
+        dock:delete()
+        dock = nil
+    end
+end
+cleanup()  -- Clean up any previous instance
 
 local function initSlots()
     for i = 1, slotCount do
         if not slots[i] then
-            slots[i] = { windowId = nil, customName = nil, name = "Slot " .. i }
+            slots[i] = { windowId = nil, customName = nil }
         end
     end
 end
 initSlots()
 
--- The dock canvas
-local dock = nil
-
--- Calculate dock width
+-- Calculate dock dimensions
 local function getDockWidth()
-    return (slotWidth * slotCount) + (gap * slotCount) + (margin * 2) + addButtonWidth
+    return (config.slotWidth * slotCount) + (config.gap * slotCount) + (config.margin * 2) + config.addButtonWidth
 end
 
 local function getDockHeight()
-    return slotHeight + (margin * 2)
+    return config.slotHeight + (config.margin * 2)
 end
 
--- Get terminal window title
-local function getWindowTitle(windowId)
+local function getDockFrame()
+    local screen = hs.screen.mainScreen()
+    if not screen then return nil end
+    local frame = screen:fullFrame()
+    local dockWidth = getDockWidth()
+    local dockHeight = getDockHeight()
+    return {
+        x = (frame.w - dockWidth) / 2,
+        y = frame.h - dockHeight - config.bottomOffset,
+        w = dockWidth,
+        h = dockHeight
+    }
+end
+
+-- Window helpers
+local function getWindow(windowId)
     if not windowId then return nil end
-    local win = hs.window.get(windowId)
-    if win then
-        local title = win:title() or ""
-        if #title > 18 then
-            title = title:sub(1, 15) .. "..."
-        end
-        return title
-    end
-    return nil
+    return hs.window.get(windowId)
 end
 
--- Check if window still exists
-local function windowExists(windowId)
-    if not windowId then return false end
-    local win = hs.window.get(windowId)
-    return win ~= nil
+local function getWindowTitle(win)
+    if not win then return nil end
+    local title = win:title() or ""
+    if #title > 18 then
+        title = title:sub(1, 15) .. "..."
+    end
+    return title
 end
 
 -- Forward declarations
@@ -67,32 +118,28 @@ local function updateSlotDisplay(slotIndex)
     if slotIndex > slotCount then return end
 
     local slot = slots[slotIndex]
-    local baseIdx = 3 + ((slotIndex - 1) * 4)  -- bg, border, title, status
+    local baseIdx = config.baseElements + 1 + ((slotIndex - 1) * config.elementsPerSlot)
 
-    local title = ""
-    local status = ""
-    local bgColor = { red = 0.15, green = 0.15, blue = 0.15, alpha = 1 }
+    local title, status, bgColor
+    local win = getWindow(slot.windowId)
 
-    if slot.windowId and windowExists(slot.windowId) then
-        local win = hs.window.get(slot.windowId)
-        title = slot.customName or getWindowTitle(slot.windowId) or slot.name
-
+    if win then
+        title = slot.customName or getWindowTitle(win) or "Terminal"
         if win:isMinimized() then
             status = "(minimized)"
-            bgColor = { red = 0.12, green = 0.12, blue = 0.18, alpha = 1 }
+            bgColor = config.colors.slotMinimized
         else
             status = "active"
-            bgColor = { red = 0.1, green = 0.2, blue = 0.1, alpha = 1 }
+            bgColor = config.colors.slotActive
         end
     else
         slot.windowId = nil
         slot.customName = nil
         title = "Empty"
         status = "click to open"
-        bgColor = { red = 0.15, green = 0.15, blue = 0.15, alpha = 1 }
+        bgColor = config.colors.slotEmpty
     end
 
-    -- Update elements
     if dock[baseIdx] then
         dock[baseIdx].fillColor = bgColor
     end
@@ -104,7 +151,6 @@ local function updateSlotDisplay(slotIndex)
     end
 end
 
--- Update all slots
 updateAllSlots = function()
     for i = 1, slotCount do
         updateSlotDisplay(i)
@@ -126,25 +172,61 @@ local function renameSlot(slotIndex)
     end
 end
 
+-- Capture newly created terminal window with retries
+local function captureNewWindow(slot, retryCount)
+    retryCount = retryCount or 0
+    if retryCount >= config.windowCaptureRetries then
+        updateAllSlots()
+        return
+    end
+
+    local termApp = hs.application.get("Terminal")
+    if not termApp then
+        hs.timer.doAfter(config.windowCaptureDelay, function()
+            captureNewWindow(slot, retryCount + 1)
+        end)
+        return
+    end
+
+    local wins = termApp:allWindows()
+    for _, w in ipairs(wins) do
+        local winId = w:id()
+        local isTracked = false
+        for _, s in ipairs(slots) do
+            if s.windowId == winId then
+                isTracked = true
+                break
+            end
+        end
+        if not isTracked then
+            slot.windowId = winId
+            updateAllSlots()
+            return
+        end
+    end
+
+    -- Window not found yet, retry
+    hs.timer.doAfter(config.windowCaptureDelay, function()
+        captureNewWindow(slot, retryCount + 1)
+    end)
+end
+
 -- Handle slot click
-local function onSlotClick(slotIndex, isRightClick)
+local function onSlotClick(slotIndex, isOptionClick)
     local slot = slots[slotIndex]
 
-    if isRightClick then
+    if isOptionClick then
         renameSlot(slotIndex)
         return
     end
 
-    if slot.windowId and windowExists(slot.windowId) then
-        local win = hs.window.get(slot.windowId)
-        if win then
-            if win:isMinimized() then
-                win:unminimize()
-            end
-            win:focus()
+    local win = getWindow(slot.windowId)
+    if win then
+        if win:isMinimized() then
+            win:unminimize()
         end
+        win:focus()
     else
-        -- Prompt for name first
         local button, newName = hs.dialog.textPrompt(
             "New Claude Terminal",
             "Enter a name for this terminal:",
@@ -158,7 +240,6 @@ local function onSlotClick(slotIndex, isRightClick)
 
         slot.customName = (newName and newName ~= "") and newName or ("Claude " .. slotIndex)
 
-        -- Create new terminal and run claude
         hs.applescript([[
             tell application "Terminal"
                 do script "claude"
@@ -166,30 +247,7 @@ local function onSlotClick(slotIndex, isRightClick)
             end tell
         ]])
 
-        -- Wait and capture the window
-        hs.timer.doAfter(0.5, function()
-            local termApp = hs.application.get("Terminal")
-            if termApp then
-                local wins = termApp:allWindows()
-                if #wins > 0 then
-                    for _, win in ipairs(wins) do
-                        local winId = win:id()
-                        local isTracked = false
-                        for _, s in ipairs(slots) do
-                            if s.windowId == winId then
-                                isTracked = true
-                                break
-                            end
-                        end
-                        if not isTracked then
-                            slot.windowId = winId
-                            break
-                        end
-                    end
-                end
-            end
-            updateAllSlots()
-        end)
+        captureNewWindow(slot, 0)
     end
 
     updateSlotDisplay(slotIndex)
@@ -198,31 +256,22 @@ end
 -- Add a new slot and launch terminal
 local function addSlot()
     slotCount = slotCount + 1
-    local newSlotIndex = slotCount
-    slots[newSlotIndex] = { windowId = nil, customName = nil, name = "Slot " .. newSlotIndex }
+    slots[slotCount] = { windowId = nil, customName = nil }
 
-    -- Rebuild dock with new size
     if dock then
         dock:delete()
     end
     createDock()
-
-    -- Immediately launch terminal in the new slot
-    onSlotClick(newSlotIndex, false)
+    onSlotClick(slotCount, false)
 end
 
--- Create the dock
+-- Create the dock UI
 createDock = function()
-    local screen = hs.screen.mainScreen():fullFrame()
-    local dockWidth = getDockWidth()
-    local dockHeight = getDockHeight()
-
-    local frame = {
-        x = (screen.w - dockWidth) / 2,
-        y = screen.h - dockHeight - bottomOffset,
-        w = dockWidth,
-        h = dockHeight
-    }
+    local frame = getDockFrame()
+    if not frame then
+        hs.alert.show("Claude Dock: No screen found")
+        return
+    end
 
     dock = hs.canvas.new(frame)
 
@@ -231,7 +280,7 @@ createDock = function()
         type = "rectangle",
         action = "fill",
         roundedRectRadii = { xRadius = 14, yRadius = 14 },
-        fillColor = { red = 0.08, green = 0.08, blue = 0.08, alpha = 0.95 },
+        fillColor = config.colors.dockBg,
         frame = { x = 0, y = 0, w = "100%", h = "100%" },
     })
 
@@ -240,84 +289,77 @@ createDock = function()
         type = "rectangle",
         action = "stroke",
         roundedRectRadii = { xRadius = 14, yRadius = 14 },
-        strokeColor = { red = 1, green = 1, blue = 1, alpha = 0.1 },
+        strokeColor = config.colors.dockBorder,
         strokeWidth = 1,
         frame = { x = 0, y = 0, w = "100%", h = "100%" },
     })
 
     -- Slots
     for i = 1, slotCount do
-        local slotX = margin + ((i - 1) * (slotWidth + gap))
+        local slotX = config.margin + ((i - 1) * (config.slotWidth + config.gap))
 
-        -- Slot background
         dock:appendElements({
             type = "rectangle",
             action = "fill",
-            frame = { x = slotX, y = margin, w = slotWidth, h = slotHeight },
+            frame = { x = slotX, y = config.margin, w = config.slotWidth, h = config.slotHeight },
             roundedRectRadii = { xRadius = 10, yRadius = 10 },
-            fillColor = { red = 0.15, green = 0.15, blue = 0.15, alpha = 1 },
-            trackMouseDown = true,
+            fillColor = config.colors.slotEmpty,
             trackMouseUp = true,
-            trackMouseEnterExit = true,
             id = "slot" .. i,
         })
 
-        -- Slot border
         dock:appendElements({
             type = "rectangle",
             action = "stroke",
-            frame = { x = slotX, y = margin, w = slotWidth, h = slotHeight },
+            frame = { x = slotX, y = config.margin, w = config.slotWidth, h = config.slotHeight },
             roundedRectRadii = { xRadius = 10, yRadius = 10 },
-            strokeColor = { red = 1, green = 1, blue = 1, alpha = 0.15 },
+            strokeColor = config.colors.slotBorder,
             strokeWidth = 1,
         })
 
-        -- Title text
         dock:appendElements({
             type = "text",
-            frame = { x = slotX + 6, y = margin + 8, w = slotWidth - 12, h = 24 },
+            frame = { x = slotX + 6, y = config.margin + 8, w = config.slotWidth - 12, h = 24 },
             text = "Empty",
             textAlignment = "center",
-            textColor = { red = 0.9, green = 0.9, blue = 0.9, alpha = 1 },
+            textColor = config.colors.textPrimary,
             textSize = 13,
             textFont = ".AppleSystemUIFont",
         })
 
-        -- Status text
         dock:appendElements({
             type = "text",
-            frame = { x = slotX + 6, y = margin + 32, w = slotWidth - 12, h = 20 },
+            frame = { x = slotX + 6, y = config.margin + 32, w = config.slotWidth - 12, h = 20 },
             text = "click to open",
             textAlignment = "center",
-            textColor = { red = 0.5, green = 0.5, blue = 0.5, alpha = 1 },
+            textColor = config.colors.textSecondary,
             textSize = 10,
             textFont = ".AppleSystemUIFont",
         })
     end
 
-    -- Add button (+)
-    local addBtnX = margin + (slotCount * (slotWidth + gap))
+    -- Add button
+    local addBtnX = config.margin + (slotCount * (config.slotWidth + config.gap))
     dock:appendElements({
         type = "rectangle",
         action = "fill",
-        frame = { x = addBtnX, y = margin, w = addButtonWidth, h = slotHeight },
+        frame = { x = addBtnX, y = config.margin, w = config.addButtonWidth, h = config.slotHeight },
         roundedRectRadii = { xRadius = 10, yRadius = 10 },
-        fillColor = { red = 0.2, green = 0.25, blue = 0.2, alpha = 1 },
+        fillColor = config.colors.addBtnBg,
         trackMouseUp = true,
         id = "addBtn",
     })
     dock:appendElements({
         type = "text",
-        frame = { x = addBtnX, y = margin + 15, w = addButtonWidth, h = 30 },
+        frame = { x = addBtnX, y = config.margin + 15, w = config.addButtonWidth, h = 30 },
         text = "+",
         textAlignment = "center",
-        textColor = { red = 0.6, green = 0.8, blue = 0.6, alpha = 1 },
+        textColor = config.colors.addBtnText,
         textSize = 28,
         textFont = ".AppleSystemUIFont",
     })
 
-    -- Click handler
-    dock:mouseCallback(function(canvas, event, id, x, y)
+    dock:mouseCallback(function(_, event, id)
         if event == "mouseUp" then
             if id == "addBtn" then
                 addSlot()
@@ -334,72 +376,59 @@ createDock = function()
     dock:level(hs.canvas.windowLevels.floating)
     dock:behavior(hs.canvas.windowBehaviors.canJoinAllSpaces)
     dock:show()
-
     updateAllSlots()
 end
 
--- Toggle dock visibility
 local function toggleDock()
     if dock then
-        if dock:isShowing() then
-            dock:hide()
-        else
-            dock:show()
-        end
+        if dock:isShowing() then dock:hide() else dock:show() end
     end
 end
 
--- Periodic update to refresh window states
-local updateTimer = hs.timer.doEvery(1, function()
-    if dock and dock:isShowing() then
-        updateAllSlots()
-    end
-end)
-
--- Watch for window events
-local windowFilter = hs.window.filter.new("Terminal")
+-- Window event watcher for immediate updates
+windowFilter = hs.window.filter.new("Terminal")
 windowFilter:subscribe({
     hs.window.filter.windowDestroyed,
     hs.window.filter.windowMinimized,
     hs.window.filter.windowUnminimized,
     hs.window.filter.windowFocused,
-}, function()
-    updateAllSlots()
+}, updateAllSlots)
+
+-- Periodic refresh as fallback
+updateTimer = hs.timer.doEvery(2, function()
+    if dock and dock:isShowing() then
+        updateAllSlots()
+    end
 end)
 
--- Init
+-- Screen change handler
+screenWatcher = hs.screen.watcher.new(function()
+    if dock then
+        local frame = getDockFrame()
+        if frame then
+            dock:frame(frame)
+        end
+    end
+end)
+screenWatcher:start()
+
+-- Initialize
 createDock()
 
 -- Hotkeys
 hs.hotkey.bind({"cmd", "alt"}, "T", toggleDock)
-hs.hotkey.bind({"cmd", "alt"}, "N", addSlot)  -- Add new slot
+hs.hotkey.bind({"cmd", "alt"}, "N", addSlot)
 hs.hotkey.bind({"cmd", "alt"}, "R", hs.reload)
 
--- Screen watcher
-hs.screen.watcher.new(function()
-    if dock then
-        local screen = hs.screen.mainScreen():fullFrame()
-        local dockWidth = getDockWidth()
-        local dockHeight = getDockHeight()
-        dock:frame({
-            x = (screen.w - dockWidth) / 2,
-            y = screen.h - dockHeight - bottomOffset,
-            w = dockWidth,
-            h = dockHeight
-        })
-    end
-end):start()
-
-hs.alert.show("Terminal Dock Ready")
+hs.alert.show("Claude Dock Ready")
 
 -- ===================
--- TESTS
+-- TESTS (run with: hs -c "runTests()")
 -- ===================
--- Run with: hs -c "runTests()"
 
 function runTests()
-    local passed = 0
-    local failed = 0
+    local passed, failed = 0, 0
+    local savedSlotCount, savedSlots = slotCount, slots
 
     local function test(name, fn)
         local ok, err = pcall(fn)
@@ -418,120 +447,96 @@ function runTests()
         end
     end
 
-    print("\n=== Terminal Dock Tests ===\n")
+    local function restore()
+        slotCount, slots = savedSlotCount, savedSlots
+    end
 
-    test("windowFilter triggers updateAllSlots on window destroy", function()
-        assert(windowFilter, "windowFilter should exist")
+    print("\n=== Claude Dock Tests ===\n")
+
+    test("getWindow returns nil for nil input", function()
+        assertEqual(getWindow(nil), nil)
     end)
 
-    test("windowExists returns false for nil windowId", function()
-        assertEqual(windowExists(nil), false)
+    test("getWindow returns nil for invalid windowId", function()
+        assertEqual(getWindow(999999999), nil)
     end)
 
-    test("windowExists returns false for invalid windowId", function()
-        assertEqual(windowExists(999999999), false)
+    test("getWindowTitle returns nil for nil window", function()
+        assertEqual(getWindowTitle(nil), nil)
     end)
 
-    test("slot clears windowId when window no longer exists", function()
-        local testSlot = { windowId = 999999999, name = "Test" }
-        local exists = windowExists(testSlot.windowId)
-        if not exists then
+    test("slot clears windowId when window gone", function()
+        local testSlot = { windowId = 999999999 }
+        if not getWindow(testSlot.windowId) then
             testSlot.windowId = nil
         end
         assertEqual(testSlot.windowId, nil)
     end)
 
-    test("getWindowTitle returns nil for invalid window", function()
-        local title = getWindowTitle(999999999)
-        assertEqual(title, nil)
-    end)
-
-    test("customName is cleared when window is closed", function()
-        local testSlot = { windowId = 999999999, customName = "MyTerminal", name = "Test" }
-        if not windowExists(testSlot.windowId) then
+    test("slot clears customName when window gone", function()
+        local testSlot = { windowId = 999999999, customName = "Test" }
+        if not getWindow(testSlot.windowId) then
             testSlot.windowId = nil
             testSlot.customName = nil
         end
-        assertEqual(testSlot.customName, nil, "customName should be cleared")
-    end)
-
-    test("addSlot increases slotCount", function()
-        local before = slotCount
-        -- Note: addSlot now triggers onSlotClick which shows a dialog
-        -- So we test the slot creation logic directly
-        slotCount = slotCount + 1
-        slots[slotCount] = { windowId = nil, customName = nil, name = "Slot " .. slotCount }
-        assertEqual(slotCount, before + 1, "slotCount should increase by 1")
-        assert(slots[slotCount], "new slot should exist")
+        assertEqual(testSlot.customName, nil)
     end)
 
     test("getDockWidth scales with slotCount", function()
-        local width1 = getDockWidth()
-        local oldCount = slotCount
+        local w1 = getDockWidth()
         slotCount = slotCount + 1
-        local width2 = getDockWidth()
-        slotCount = oldCount  -- restore
-        assert(width2 > width1, "dock should be wider with more slots")
+        local w2 = getDockWidth()
+        restore()
+        assert(w2 > w1, "width should increase")
     end)
 
     test("getDockHeight is constant", function()
-        local height1 = getDockHeight()
-        local oldCount = slotCount
+        local h1 = getDockHeight()
         slotCount = slotCount + 5
-        local height2 = getDockHeight()
-        slotCount = oldCount  -- restore
-        assertEqual(height1, height2, "height should not change with slot count")
+        local h2 = getDockHeight()
+        restore()
+        assertEqual(h1, h2)
     end)
 
-    test("initSlots creates slots up to slotCount", function()
-        local oldSlots = slots
-        local oldCount = slotCount
+    test("initSlots creates correct slots", function()
         slots = {}
         slotCount = 3
         initSlots()
-        assert(slots[1], "slot 1 should exist")
-        assert(slots[2], "slot 2 should exist")
-        assert(slots[3], "slot 3 should exist")
+        assert(slots[1] and slots[2] and slots[3], "slots 1-3 should exist")
         assert(not slots[4], "slot 4 should not exist")
-        assert(slots[1].name == "Slot 1", "slot 1 should have correct name")
-        slots = oldSlots
-        slotCount = oldCount
+        restore()
     end)
 
     test("toggleDock changes visibility", function()
-        assert(dock, "dock should exist")
-        local wasShowing = dock:isShowing()
+        local was = dock:isShowing()
         toggleDock()
-        local nowShowing = dock:isShowing()
-        assertEqual(nowShowing, not wasShowing, "visibility should toggle")
-        toggleDock()  -- restore
+        assertEqual(dock:isShowing(), not was)
+        toggleDock()
     end)
 
-    test("slot with valid customName shows customName", function()
-        local testSlot = { windowId = nil, customName = "MyCustomName", name = "Test" }
-        -- When window doesn't exist, customName gets cleared
-        -- So test the case where we set customName before window check
-        local displayName = testSlot.customName or "Empty"
-        assertEqual(displayName, "MyCustomName")
+    test("updateSlotDisplay handles invalid index", function()
+        local ok = pcall(updateSlotDisplay, 9999)
+        assert(ok, "should not error")
     end)
 
-    test("getWindowTitle truncates long titles", function()
-        -- Can't easily test with real window, but we verify the function exists
-        assert(type(getWindowTitle) == "function", "getWindowTitle should be a function")
-    end)
-
-    test("updateSlotDisplay handles out of bounds index", function()
-        -- Should not error when given invalid index
-        local success = pcall(function()
-            updateSlotDisplay(9999)
-        end)
-        assert(success, "updateSlotDisplay should handle invalid index gracefully")
-    end)
-
-    test("windowFilter is subscribed to all required events", function()
+    test("windowFilter exists", function()
         assert(windowFilter, "windowFilter should exist")
-        -- The filter was created with "Terminal" app filter
-        -- Subscriptions happen at load time
+    end)
+
+    test("cleanup function exists", function()
+        assert(type(cleanup) == "function", "cleanup should be a function")
+    end)
+
+    test("config has required color fields", function()
+        assert(config.colors.slotEmpty, "slotEmpty color")
+        assert(config.colors.slotActive, "slotActive color")
+        assert(config.colors.slotMinimized, "slotMinimized color")
+    end)
+
+    test("getDockFrame returns table with x,y,w,h", function()
+        local frame = getDockFrame()
+        assert(frame, "frame should exist")
+        assert(frame.x and frame.y and frame.w and frame.h, "frame should have x,y,w,h")
     end)
 
     print("\n=== Results: " .. passed .. " passed, " .. failed .. " failed ===\n")
