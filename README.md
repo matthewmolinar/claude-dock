@@ -3,6 +3,7 @@
 A lightweight, expandable terminal dock for macOS built with [Hammerspoon](https://www.hammerspoon.org/). Designed for managing multiple Claude Code terminal sessions.
 
 ![Claude Dock](https://img.shields.io/badge/macOS-Hammerspoon-blue)
+[![npm version](https://img.shields.io/npm/v/claude-dock.svg)](https://www.npmjs.com/package/claude-dock)
 
 ## Features
 
@@ -16,7 +17,22 @@ A lightweight, expandable terminal dock for macOS built with [Hammerspoon](https
 
 ## Installation
 
-### Prerequisites
+```bash
+npx claude-dock
+```
+
+That's it! The installer will:
+- Install Hammerspoon (if needed)
+- Set up the dock configuration
+- Launch Hammerspoon
+
+**Note:** You'll need to grant Accessibility permissions when prompted:
+System Settings → Privacy & Security → Accessibility → Enable Hammerspoon
+
+### Manual Installation
+
+<details>
+<summary>Click to expand manual setup instructions</summary>
 
 1. Install [Hammerspoon](https://www.hammerspoon.org/):
    ```bash
@@ -27,16 +43,15 @@ A lightweight, expandable terminal dock for macOS built with [Hammerspoon](https
    - System Settings > Privacy & Security > Accessibility
    - Enable Hammerspoon
 
-### Setup
-
-1. Clone this repo (or download the ZIP from GitHub)
-
-2. Copy to Hammerspoon config:
+3. Clone this repo and copy the config:
    ```bash
+   git clone https://github.com/matthewmolinar/claude-dock.git
    cp claude-dock/init.lua ~/.hammerspoon/init.lua
    ```
 
-3. Launch Hammerspoon (or reload if already running)
+4. Launch Hammerspoon (or reload if already running)
+
+</details>
 
 ## Usage
 
