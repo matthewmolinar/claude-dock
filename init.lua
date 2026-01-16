@@ -387,17 +387,19 @@ local function updateSlotDisplay(slotIndex)
             status = "active"
             bgColor = config.colors.slotActive
         end
+    elseif slot.windowId then
+        -- Window exists but not visible (probably on another space)
+        title = slot.customName or "Terminal"
+        status = "(other space)"
+        bgColor = config.colors.slotMinimized
     else
-        -- Don't clear customName if we're waiting for a window to spawn
-        if not slot.pending then
-            slot.windowId = nil
-            slot.customName = nil
-            slot.hasNotification = false
-            title = "Empty"
-            status = "click to open"
-        else
+        -- No window assigned
+        if slot.pending then
             title = slot.customName or "Opening..."
             status = "launching"
+        else
+            title = "Empty"
+            status = "click to open"
         end
         bgColor = config.colors.slotEmpty
     end
@@ -759,10 +761,37 @@ end
 -- Window event watcher for immediate updates
 windowFilter = hs.window.filter.new("Terminal")
 windowFilter:subscribe({
-    hs.window.filter.windowDestroyed,
     hs.window.filter.windowMinimized,
     hs.window.filter.windowUnminimized,
 }, updateAllSlots)
+
+-- Handle window destruction - clear the slot
+windowFilter:subscribe(hs.window.filter.windowDestroyed, function(win, appName, event)
+    -- win may be nil at this point, so we need to check all slots
+    for i, slot in ipairs(slots) do
+        if slot.windowId then
+            local existingWin = getWindow(slot.windowId)
+            if not existingWin then
+                -- Try to verify window is truly gone (not just on another space)
+                -- by checking all Terminal windows
+                local allTerminals = hs.window.filter.new("Terminal"):getWindows()
+                local found = false
+                for _, w in ipairs(allTerminals) do
+                    if w:id() == slot.windowId then
+                        found = true
+                        break
+                    end
+                end
+                if not found then
+                    slot.windowId = nil
+                    slot.customName = nil
+                    slot.hasNotification = false
+                end
+            end
+        end
+    end
+    updateAllSlots()
+end)
 
 -- Clear notification when window is focused
 windowFilter:subscribe(hs.window.filter.windowFocused, function(win)
