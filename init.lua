@@ -15,7 +15,7 @@ local config = {
     addButtonWidth = 40,
     utilityButtonWidth = 28,
     initialSlots = 3,
-    elementsPerSlot = 5,  -- bg, border, title, status, notification badge
+    elementsPerSlot = 7,  -- bg, border, title, status, badge glow outer, badge glow inner, badge
     baseElements = 12,    -- dock bg + border + 6 tab elements + 4 utility btn elements
     windowCaptureDelay = 0.3,
     windowCaptureRetries = 5,
@@ -75,6 +75,8 @@ local dock = nil
 local tooltip = nil
 local helpPanel = nil
 local macOSDockAtBottom = false
+local pulseTimer = nil
+local pulsePhase = 0
 
 -- Check macOS dock position
 local function getMacOSDockPosition()
@@ -110,6 +112,10 @@ local function cleanup()
     if updateTimer then
         updateTimer:stop()
         updateTimer = nil
+    end
+    if pulseTimer then
+        pulseTimer:stop()
+        pulseTimer = nil
     end
     if screenWatcher then
         screenWatcher:stop()
@@ -194,6 +200,9 @@ local function findSlotByWindowId(windowId)
     return nil
 end
 
+-- Forward declaration for pulse animation
+local startPulseAnimation
+
 -- Set notification for a slot (only if window is not focused)
 local function setSlotNotification(slotIndex)
     local slot = slots[slotIndex]
@@ -206,6 +215,7 @@ local function setSlotNotification(slotIndex)
         if not focusedWin or focusedWin:id() ~= slot.windowId then
             slot.hasNotification = true
             updateSlotDisplay(slotIndex)
+            if startPulseAnimation then startPulseAnimation() end
         end
     end
 end
@@ -452,17 +462,96 @@ local function updateSlotDisplay(slotIndex)
     if dock[baseIdx + 3] then
         dock[baseIdx + 3].text = status
     end
-    -- Update notification badge visibility
+    -- Update notification badge with glow
+    local badgeColor = config.colors.notificationBadge
+    local hidden = { red = 0, green = 0, blue = 0, alpha = 0 }
+
+    -- Outer glow (baseIdx + 4)
     if dock[baseIdx + 4] then
         dock[baseIdx + 4].fillColor = slot.hasNotification
-            and config.colors.notificationBadge
-            or { red = 0, green = 0, blue = 0, alpha = 0 }
+            and { red = badgeColor.red, green = badgeColor.green, blue = badgeColor.blue, alpha = 0.2 }
+            or hidden
+    end
+    -- Inner glow (baseIdx + 5)
+    if dock[baseIdx + 5] then
+        dock[baseIdx + 5].fillColor = slot.hasNotification
+            and { red = badgeColor.red, green = badgeColor.green, blue = badgeColor.blue, alpha = 0.4 }
+            or hidden
+    end
+    -- Main badge (baseIdx + 6)
+    if dock[baseIdx + 6] then
+        dock[baseIdx + 6].fillColor = slot.hasNotification
+            and badgeColor
+            or hidden
     end
 end
 
 updateAllSlots = function()
     for i = 1, slotCount do
         updateSlotDisplay(i)
+    end
+end
+
+-- Pulse animation for notification badges
+local function updatePulse()
+    if not dock then return end
+
+    pulsePhase = pulsePhase + 0.15
+    if pulsePhase > math.pi * 2 then
+        pulsePhase = 0
+    end
+
+    -- Pulsing multiplier: oscillates between 0.5 and 1.0
+    local pulse = 0.75 + 0.25 * math.sin(pulsePhase)
+
+    local badgeColor = config.colors.notificationBadge
+    local hidden = { red = 0, green = 0, blue = 0, alpha = 0 }
+
+    local hasAnyNotification = false
+    for i = 1, slotCount do
+        local slot = slots[i]
+        if slot and slot.hasNotification then
+            hasAnyNotification = true
+            local baseIdx = config.baseElements + 1 + ((i - 1) * config.elementsPerSlot)
+
+            -- Outer glow pulses
+            if dock[baseIdx + 4] then
+                dock[baseIdx + 4].fillColor = {
+                    red = badgeColor.red,
+                    green = badgeColor.green,
+                    blue = badgeColor.blue,
+                    alpha = 0.2 * pulse
+                }
+            end
+            -- Inner glow pulses
+            if dock[baseIdx + 5] then
+                dock[baseIdx + 5].fillColor = {
+                    red = badgeColor.red,
+                    green = badgeColor.green,
+                    blue = badgeColor.blue,
+                    alpha = 0.5 * pulse
+                }
+            end
+        end
+    end
+
+    -- Stop timer if no notifications
+    if not hasAnyNotification and pulseTimer then
+        pulseTimer:stop()
+        pulseTimer = nil
+    end
+end
+
+startPulseAnimation = function()
+    if not pulseTimer then
+        pulseTimer = hs.timer.doEvery(0.05, updatePulse)
+    end
+end
+
+local function stopPulseAnimation()
+    if pulseTimer then
+        pulseTimer:stop()
+        pulseTimer = nil
     end
 end
 
@@ -748,12 +837,34 @@ createDock = function()
             textFont = ".AppleSystemUIFont",
         })
 
-        -- Notification badge (top-right corner of slot, overlapping edge like app badges)
+        -- Notification badge with glow (top-right corner, true corner position)
         local badgeSize = config.notificationBadgeSize
+        local badgeCenterX = slotX + config.slotWidth - 4
+        local badgeCenterY = slotY + 4
+
+        -- Outer glow
         dock:appendElements({
             type = "circle",
             action = "fill",
-            center = { x = slotX + config.slotWidth - badgeSize/3, y = slotY + badgeSize/3 },
+            center = { x = badgeCenterX, y = badgeCenterY },
+            radius = badgeSize,
+            fillColor = { red = 0, green = 0, blue = 0, alpha = 0 },  -- Hidden by default
+        })
+
+        -- Inner glow
+        dock:appendElements({
+            type = "circle",
+            action = "fill",
+            center = { x = badgeCenterX, y = badgeCenterY },
+            radius = badgeSize * 0.75,
+            fillColor = { red = 0, green = 0, blue = 0, alpha = 0 },  -- Hidden by default
+        })
+
+        -- Main badge
+        dock:appendElements({
+            type = "circle",
+            action = "fill",
+            center = { x = badgeCenterX, y = badgeCenterY },
             radius = badgeSize / 2,
             fillColor = { red = 0, green = 0, blue = 0, alpha = 0 },  -- Hidden by default
         })
@@ -903,6 +1014,7 @@ windowFilter:subscribe(hs.window.filter.windowTitleChanged, function(win)
             if not focusedWin or focusedWin:id() ~= win:id() then
                 slots[slotIndex].hasNotification = true
                 updateSlotDisplay(slotIndex)
+                startPulseAnimation()
             end
         end
     end
