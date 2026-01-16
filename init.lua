@@ -1,5 +1,4 @@
 -- Claude Dock: Terminal dock for managing Claude Code sessions
--- https://github.com/YOUR_USERNAME/claude-dock
 
 require("hs.ipc")
 

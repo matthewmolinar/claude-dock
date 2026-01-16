@@ -29,10 +29,7 @@ A lightweight, expandable terminal dock for macOS built with [Hammerspoon](https
 
 ### Setup
 
-1. Clone this repo:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/claude-dock.git
-   ```
+1. Clone this repo (or download the ZIP from GitHub)
 
 2. Copy to Hammerspoon config:
    ```bash
