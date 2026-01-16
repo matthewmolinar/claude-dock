@@ -1,0 +1,33 @@
+{
+  "name": "claude-dock",
+  "version": "1.0.0",
+  "description": "A lightweight terminal dock for macOS to manage Claude Code sessions",
+  "bin": {
+    "claude-dock": "./bin/cli.js"
+  },
+  "keywords": [
+    "claude",
+    "hammerspoon",
+    "macos",
+    "terminal",
+    "dock",
+    "cli"
+  ],
+  "author": "Matthew Molinar",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/matthewmolinar/claude-dock.git"
+  },
+  "homepage": "https://github.com/matthewmolinar/claude-dock",
+  "engines": {
+    "node": ">=14"
+  },
+  "os": [
+    "darwin"
+  ],
+  "files": [
+    "bin/",
+    "init.lua"
+  ]
+}
