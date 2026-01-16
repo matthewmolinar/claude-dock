@@ -1,17 +1,19 @@
 # Claude Dock
 
-A lightweight, expandable terminal dock for macOS built with [Hammerspoon](https://www.hammerspoon.org/). Designed for managing multiple Claude Code terminal sessions.
+A lightweight, expandable terminal dock for macOS built with [Hammerspoon](https://www.hammerspoon.org/). Manage multiple AI coding agent sessions - **Claude Code**, **Amp**, and **Codex**.
 
 ![Claude Dock](https://img.shields.io/badge/macOS-Hammerspoon-blue)
 [![npm version](https://img.shields.io/npm/v/claude-dock.svg)](https://www.npmjs.com/package/claude-dock)
 
 ## Features
 
+- **Multi-agent support** - Works with Claude Code, Sourcegraph Amp, and OpenAI Codex
 - **Expandable dock** - Start with 3 slots, add more with "+" button or hotkey
 - **Terminal management** - Each slot tracks a specific terminal window
-- **Auto-launch Claude** - New terminals automatically run `claude` command
+- **Auto-launch** - New terminals automatically run your configured agent
 - **Custom naming** - Name your terminals for easy identification
-- **Visual status** - See which terminals are active, minimized, or empty
+- **Visual status** - See which terminals are active, minimized, or on other spaces
+- **Notification badges** - Red dot appears when a terminal has activity while unfocused
 - **Quick access** - Click to focus/unminimize terminals
 - **Keyboard shortcuts** - Full hotkey support
 
@@ -61,6 +63,7 @@ System Settings → Privacy & Security → Accessibility → Enable Hammerspoon
 |----------|--------|
 | `Cmd+Option+T` | Toggle dock visibility |
 | `Cmd+Option+N` | Add new slot + launch terminal |
+| `Cmd+Option+M` | Minimize all terminals |
 | `Cmd+Option+R` | Reload configuration |
 | `Option+Click` | Rename a slot |
 
@@ -70,11 +73,12 @@ System Settings → Privacy & Security → Accessibility → Enable Hammerspoon
 |-------|--------|
 | Gray | Empty - click to open new terminal |
 | Green | Active terminal |
-| Blue | Minimized terminal |
+| Blue | Minimized or on other space |
+| Red dot | Terminal has new activity |
 
 ### Click Actions
 
-- **Click empty slot** - Prompts for name, opens terminal, runs `claude`
+- **Click empty slot** - Prompts for name, opens terminal, runs agent
 - **Click active slot** - Focuses that terminal window
 - **Click minimized slot** - Unminimizes and focuses
 - **Click "+" button** - Adds new slot and launches terminal
@@ -82,38 +86,37 @@ System Settings → Privacy & Security → Accessibility → Enable Hammerspoon
 
 ## Configuration
 
-Edit `init.lua` to customize:
+Edit `~/.hammerspoon/init.lua` to customize.
+
+### Changing the Agent
+
+By default, claude-dock launches `claude`. To use a different agent:
 
 ```lua
--- Configuration
-local slotWidth = 140      -- Width of each slot
-local slotHeight = 60      -- Height of each slot
-local gap = 8              -- Gap between slots
-local margin = 10          -- Dock padding
-local bottomOffset = 5     -- Distance from screen bottom
-local slotCount = 3        -- Initial number of slots
+local config = {
+    -- Agent to launch: "claude", "amp", or "codex"
+    agent = "amp",  -- Change to your preferred agent
+    ...
+}
 ```
 
-### Using a Different Terminal
+Supported agents:
+- `"claude"` - [Claude Code](https://claude.ai/code) (default)
+- `"amp"` - [Sourcegraph Amp](https://ampcode.com/)
+- `"codex"` - [OpenAI Codex](https://openai.com/codex/)
 
-To use iTerm instead of Terminal.app, modify the `onSlotClick` function:
+### Other Options
 
 ```lua
--- Change this:
-hs.applescript([[
-    tell application "Terminal"
-        do script "claude"
-        activate
-    end tell
-]])
-
--- To this:
-hs.applescript([[
-    tell application "iTerm"
-        create window with default profile command "claude"
-        activate
-    end tell
-]])
+local config = {
+    agent = "claude",      -- Which AI agent to launch
+    slotWidth = 140,       -- Width of each slot
+    slotHeight = 60,       -- Height of each slot
+    gap = 8,               -- Gap between slots
+    margin = 10,           -- Dock padding
+    bottomOffset = 5,      -- Distance from screen bottom
+    initialSlots = 3,      -- Starting number of slots
+}
 ```
 
 ## Running Tests

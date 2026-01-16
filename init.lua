@@ -1,10 +1,12 @@
--- Claude Dock: Terminal dock for managing Claude Code sessions
+-- Claude Dock: Terminal dock for managing AI coding agent sessions (Claude, Amp, Codex)
 -- https://github.com/YOUR_USERNAME/claude-dock
 
 require("hs.ipc")
 
 -- Configuration
 local config = {
+    -- Agent to launch: "claude", "amp", or "codex"
+    agent = "claude",
     slotWidth = 140,
     slotHeight = 60,
     gap = 8,
@@ -14,7 +16,7 @@ local config = {
     utilityButtonWidth = 28,
     initialSlots = 3,
     elementsPerSlot = 5,  -- bg, border, title, status, notification badge
-    baseElements = 6,     -- dock bg + border + help btn + help text + minimize btn + minimize text
+    baseElements = 12,    -- dock bg + border + 6 tab elements + 4 utility btn elements
     windowCaptureDelay = 0.3,
     windowCaptureRetries = 5,
     colors = {
@@ -35,7 +37,36 @@ local config = {
         notificationBadge = { red = 1, green = 0.3, blue = 0.3, alpha = 1 },
     },
     notificationBadgeSize = 12,
+    tabHeight = 28,
+    tabWidth = 60,
 }
+
+-- Supported agents (order matters for tab display)
+local agentOrder = { "claude", "amp", "codex" }
+local agents = {
+    claude = {
+        command = "claude",
+        name = "Claude",
+        shortName = "Claude",
+        color = { red = 0.76, green = 0.37, blue = 0.24, alpha = 1 },  -- #C15F3C
+    },
+    amp = {
+        command = "amp",
+        name = "Amp",
+        shortName = "Amp",
+        color = { red = 0.6, green = 0.2, blue = 0.8, alpha = 1 },  -- Purple
+    },
+    codex = {
+        command = "codex",
+        name = "Codex",
+        shortName = "Codex",
+        color = { red = 0.0, green = 0.65, blue = 0.52, alpha = 1 },  -- OpenAI teal #00A67E
+    },
+}
+
+local function getAgent()
+    return agents[config.agent] or agents.claude
+end
 
 -- State
 local slotCount = config.initialSlots
@@ -110,14 +141,12 @@ initSlots()
 
 -- Calculate dock dimensions
 local function getDockWidth()
-    -- Left: small utility button (minimize), Right: add button
-    local leftButtonWidth = config.utilityButtonWidth + config.gap
     local rightButtonWidth = config.addButtonWidth
-    return leftButtonWidth + (config.slotWidth * slotCount) + (config.gap * (slotCount - 1)) + config.gap + rightButtonWidth + (config.margin * 2)
+    return (config.slotWidth * slotCount) + (config.gap * (slotCount - 1)) + config.gap + rightButtonWidth + (config.margin * 2)
 end
 
 local function getDockHeight()
-    return config.slotHeight + (config.margin * 2)
+    return config.tabHeight + config.slotHeight + (config.margin * 2)
 end
 
 local function getDockFrame()
@@ -216,14 +245,23 @@ local function showButtonTooltip(text, buttonId)
     local tipWidth = 50
     local tipHeight = 24
     local btnX, btnWidth
+    local dockWidth = getDockWidth()
+    local utilBtnSize = config.tabHeight - 8
 
-    if buttonId == "minBtn" or buttonId == "helpBtn" then
-        -- Left side utility buttons
-        btnX = dockFrame.x + config.margin
-        btnWidth = config.utilityButtonWidth
+    if buttonId == "minBtn" then
+        -- Top right minimize button
+        local minBtnWidth = 32
+        btnX = dockFrame.x + dockWidth - config.margin - minBtnWidth
+        btnWidth = minBtnWidth
+    elseif buttonId == "helpBtn" then
+        -- Top right help button (left of minimize)
+        local minBtnWidth = 32
+        local helpBtnWidth = 36
+        btnX = dockFrame.x + dockWidth - config.margin - minBtnWidth - 4 - helpBtnWidth
+        btnWidth = helpBtnWidth
     elseif buttonId == "addBtn" then
-        -- Right side add button
-        btnX = dockFrame.x + config.margin + config.utilityButtonWidth + config.gap + (slotCount * config.slotWidth) + (slotCount * config.gap)
+        -- Bottom right add button
+        btnX = dockFrame.x + config.margin + (slotCount * config.slotWidth) + (slotCount * config.gap)
         btnWidth = config.addButtonWidth
     end
 
@@ -378,8 +416,9 @@ local function updateSlotDisplay(slotIndex)
     local title, status, bgColor
     local win = getWindow(slot.windowId)
 
+    local agent = getAgent()
     if win then
-        title = slot.customName or getWindowTitle(win) or "Terminal"
+        title = slot.customName or getWindowTitle(win) or agent.name
         if win:isMinimized() then
             status = "(minimized)"
             bgColor = config.colors.slotMinimized
@@ -389,7 +428,7 @@ local function updateSlotDisplay(slotIndex)
         end
     elseif slot.windowId then
         -- Window exists but not visible (probably on another space)
-        title = slot.customName or "Terminal"
+        title = slot.customName or agent.name
         status = "(other space)"
         bgColor = config.colors.slotMinimized
     else
@@ -502,10 +541,11 @@ local function onSlotClick(slotIndex, isOptionClick)
         end
         win:focus()
     else
+        local agent = getAgent()
         local button, newName = hs.dialog.textPrompt(
-            "New Claude Terminal",
+            "New " .. agent.name .. " Terminal",
             "Enter a name for this terminal:",
-            "Claude " .. slotIndex,
+            agent.shortName .. " " .. slotIndex,
             "Create", "Cancel"
         )
 
@@ -513,12 +553,12 @@ local function onSlotClick(slotIndex, isOptionClick)
             return
         end
 
-        slot.customName = (newName and newName ~= "") and newName or ("Claude " .. slotIndex)
+        slot.customName = (newName and newName ~= "") and newName or (agent.shortName .. " " .. slotIndex)
         slot.pending = true
 
         hs.applescript([[
             tell application "Terminal"
-                do script "claude"
+                do script "]] .. agent.command .. [["
                 activate
             end tell
         ]])
@@ -570,41 +610,56 @@ createDock = function()
         frame = { x = 0, y = 0, w = "100%", h = "100%" },
     })
 
-    -- Utility buttons (left side, stacked: help on top, minimize on bottom)
-    local utilBtnX = config.margin
-    local btnGap = 4
-    local btnHeight = (config.slotHeight - btnGap) / 2
+    -- Agent tabs (top left)
+    local tabY = 6
+    local tabStartX = config.margin
+    for i, agentKey in ipairs(agentOrder) do
+        local agent = agents[agentKey]
+        local tabX = tabStartX + ((i - 1) * (config.tabWidth + 4))
+        local isSelected = (config.agent == agentKey)
 
-    -- Help button (top)
-    local helpBtnY = config.margin
+        -- Tab background
+        dock:appendElements({
+            type = "rectangle",
+            action = "fill",
+            frame = { x = tabX, y = tabY, w = config.tabWidth, h = config.tabHeight - 8 },
+            roundedRectRadii = { xRadius = 6, yRadius = 6 },
+            fillColor = isSelected and agent.color or { red = 0.15, green = 0.15, blue = 0.15, alpha = 1 },
+            trackMouseUp = true,
+            id = "tab_" .. agentKey,
+        })
+
+        -- Tab text
+        dock:appendElements({
+            type = "text",
+            frame = { x = tabX, y = tabY + 2, w = config.tabWidth, h = config.tabHeight - 8 },
+            text = agent.name,
+            textAlignment = "center",
+            textColor = isSelected
+                and { red = 1, green = 1, blue = 1, alpha = 1 }
+                or { red = 0.5, green = 0.5, blue = 0.5, alpha = 1 },
+            textSize = 12,
+            textFont = isSelected and ".AppleSystemUIFontBold" or ".AppleSystemUIFont",
+            trackMouseUp = true,
+            id = "tab_" .. agentKey,
+        })
+    end
+
+    -- Content area starts below tabs
+    local contentY = config.tabHeight
+
+    -- Utility buttons (top right, in tab bar area - same Y as tabs)
+    local utilBtnSize = config.tabHeight - 8
+    local utilBtnY = 6
+    local dockWidth = getDockWidth()
+
+    -- Minimize button (rightmost)
+    local minBtnWidth = 32
+    local minBtnX = dockWidth - config.margin - minBtnWidth
     dock:appendElements({
         type = "rectangle",
         action = "fill",
-        frame = { x = utilBtnX, y = helpBtnY, w = config.utilityButtonWidth, h = btnHeight },
-        roundedRectRadii = { xRadius = 6, yRadius = 6 },
-        fillColor = config.colors.helpBtnBg,
-        trackMouseUp = true,
-        trackMouseEnterExit = true,
-        id = "helpBtn",
-    })
-    dock:appendElements({
-        type = "text",
-        frame = { x = utilBtnX, y = helpBtnY + 4, w = config.utilityButtonWidth, h = btnHeight },
-        text = "?",
-        textAlignment = "center",
-        textColor = config.colors.helpBtnText,
-        textSize = 16,
-        textFont = ".AppleSystemUIFontBold",
-        trackMouseUp = true,
-        id = "helpBtn",
-    })
-
-    -- Minimize button (bottom)
-    local minBtnY = config.margin + btnHeight + btnGap
-    dock:appendElements({
-        type = "rectangle",
-        action = "fill",
-        frame = { x = utilBtnX, y = minBtnY, w = config.utilityButtonWidth, h = btnHeight },
+        frame = { x = minBtnX, y = utilBtnY, w = minBtnWidth, h = utilBtnSize },
         roundedRectRadii = { xRadius = 6, yRadius = 6 },
         fillColor = config.colors.minBtnBg,
         trackMouseUp = true,
@@ -613,25 +668,51 @@ createDock = function()
     })
     dock:appendElements({
         type = "text",
-        frame = { x = utilBtnX, y = minBtnY + 4, w = config.utilityButtonWidth, h = btnHeight },
-        text = "⌄",
+        frame = { x = minBtnX, y = utilBtnY + 2, w = minBtnWidth, h = utilBtnSize },
+        text = "Hide",
         textAlignment = "center",
         textColor = config.colors.minBtnText,
-        textSize = 16,
-        textFont = ".AppleSystemUIFont",
+        textSize = 11,
+        textFont = ".AppleSystemUIFontBold",
         trackMouseUp = true,
         id = "minBtn",
     })
 
-    -- Slots (offset by utility button)
-    local slotsStartX = config.margin + config.utilityButtonWidth + config.gap
+    -- Help button (left of minimize)
+    local helpBtnWidth = 36
+    local helpBtnX = minBtnX - helpBtnWidth - 4
+    dock:appendElements({
+        type = "rectangle",
+        action = "fill",
+        frame = { x = helpBtnX, y = utilBtnY, w = helpBtnWidth, h = utilBtnSize },
+        roundedRectRadii = { xRadius = 6, yRadius = 6 },
+        fillColor = config.colors.helpBtnBg,
+        trackMouseUp = true,
+        trackMouseEnterExit = true,
+        id = "helpBtn",
+    })
+    dock:appendElements({
+        type = "text",
+        frame = { x = helpBtnX, y = utilBtnY + 2, w = helpBtnWidth, h = utilBtnSize },
+        text = "Help",
+        textAlignment = "center",
+        textColor = config.colors.helpBtnText,
+        textSize = 11,
+        textFont = ".AppleSystemUIFontBold",
+        trackMouseUp = true,
+        id = "helpBtn",
+    })
+
+    -- Slots
+    local slotsStartX = config.margin
+    local slotY = contentY + config.margin
     for i = 1, slotCount do
         local slotX = slotsStartX + ((i - 1) * (config.slotWidth + config.gap))
 
         dock:appendElements({
             type = "rectangle",
             action = "fill",
-            frame = { x = slotX, y = config.margin, w = config.slotWidth, h = config.slotHeight },
+            frame = { x = slotX, y = slotY, w = config.slotWidth, h = config.slotHeight },
             roundedRectRadii = { xRadius = 10, yRadius = 10 },
             fillColor = config.colors.slotEmpty,
             trackMouseUp = true,
@@ -641,7 +722,7 @@ createDock = function()
         dock:appendElements({
             type = "rectangle",
             action = "stroke",
-            frame = { x = slotX, y = config.margin, w = config.slotWidth, h = config.slotHeight },
+            frame = { x = slotX, y = slotY, w = config.slotWidth, h = config.slotHeight },
             roundedRectRadii = { xRadius = 10, yRadius = 10 },
             strokeColor = config.colors.slotBorder,
             strokeWidth = 1,
@@ -649,7 +730,7 @@ createDock = function()
 
         dock:appendElements({
             type = "text",
-            frame = { x = slotX + 6, y = config.margin + 8, w = config.slotWidth - 12, h = 24 },
+            frame = { x = slotX + 6, y = slotY + 8, w = config.slotWidth - 12, h = 24 },
             text = "Empty",
             textAlignment = "center",
             textColor = config.colors.textPrimary,
@@ -659,7 +740,7 @@ createDock = function()
 
         dock:appendElements({
             type = "text",
-            frame = { x = slotX + 6, y = config.margin + 32, w = config.slotWidth - 12, h = 20 },
+            frame = { x = slotX + 6, y = slotY + 32, w = config.slotWidth - 12, h = 20 },
             text = "click to open",
             textAlignment = "center",
             textColor = config.colors.textSecondary,
@@ -672,7 +753,7 @@ createDock = function()
         dock:appendElements({
             type = "circle",
             action = "fill",
-            center = { x = slotX + config.slotWidth - badgeSize/3, y = config.margin + badgeSize/3 },
+            center = { x = slotX + config.slotWidth - badgeSize/3, y = slotY + badgeSize/3 },
             radius = badgeSize / 2,
             fillColor = { red = 0, green = 0, blue = 0, alpha = 0 },  -- Hidden by default
         })
@@ -683,19 +764,19 @@ createDock = function()
     dock:appendElements({
         type = "rectangle",
         action = "fill",
-        frame = { x = addBtnX, y = config.margin, w = config.addButtonWidth, h = config.slotHeight },
+        frame = { x = addBtnX, y = slotY, w = config.addButtonWidth, h = config.slotHeight },
         roundedRectRadii = { xRadius = 10, yRadius = 10 },
-        fillColor = config.colors.addBtnBg,
+        fillColor = { red = 0.95, green = 0.95, blue = 0.95, alpha = 1 },
         trackMouseUp = true,
         trackMouseEnterExit = true,
         id = "addBtn",
     })
     dock:appendElements({
         type = "text",
-        frame = { x = addBtnX, y = config.margin + 13, w = config.addButtonWidth, h = 30 },
+        frame = { x = addBtnX, y = slotY + 13, w = config.addButtonWidth, h = 30 },
         text = "+",
         textAlignment = "center",
-        textColor = config.colors.addBtnText,
+        textColor = { red = 0.3, green = 0.3, blue = 0.3, alpha = 1 },
         textSize = 28,
         textFont = ".AppleSystemUIFont",
         trackMouseUp = true,
@@ -710,6 +791,14 @@ createDock = function()
                 minimizeAllTerminals()
             elseif id == "helpBtn" then
                 showHelpPanel()
+            elseif id and id:match("^tab_") then
+                local agentKey = id:match("^tab_(.+)$")
+                if agentKey and agents[agentKey] then
+                    config.agent = agentKey
+                    -- Recreate dock to update tab visuals
+                    dock:delete()
+                    createDock()
+                end
             elseif id and id:match("^slot") then
                 local idx = tonumber(id:match("%d+"))
                 if idx then
@@ -1133,6 +1222,40 @@ function runTests()
 
     test("clearNotification returns false for invalid slot", function()
         assertEqual(clearNotification(9999), false)
+    end)
+
+    -- Agent configuration tests
+    test("config has agent field", function()
+        assert(config.agent, "config.agent should exist")
+    end)
+
+    test("agents table has claude, amp, codex", function()
+        assert(agents.claude, "agents.claude should exist")
+        assert(agents.amp, "agents.amp should exist")
+        assert(agents.codex, "agents.codex should exist")
+    end)
+
+    test("each agent has command and name", function()
+        for name, agent in pairs(agents) do
+            assert(agent.command, name .. " should have command")
+            assert(agent.name, name .. " should have name")
+            assert(agent.shortName, name .. " should have shortName")
+        end
+    end)
+
+    test("getAgent returns valid agent", function()
+        local agent = getAgent()
+        assert(agent, "getAgent should return an agent")
+        assert(agent.command, "agent should have command")
+        assert(agent.name, "agent should have name")
+    end)
+
+    test("getAgent falls back to claude for invalid config", function()
+        local originalAgent = config.agent
+        config.agent = "invalid"
+        local agent = getAgent()
+        assertEqual(agent.command, "claude")
+        config.agent = originalAgent
     end)
 
     print("\n=== Results: " .. passed .. " passed, " .. failed .. " failed ===\n")

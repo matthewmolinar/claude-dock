@@ -1,12 +1,18 @@
 {
   "name": "claude-dock",
   "version": "1.2.0",
-  "description": "A lightweight terminal dock for macOS to manage Claude Code sessions",
+  "description": "A lightweight terminal dock for macOS to manage AI coding agent sessions - Claude Code, Amp, and Codex",
   "bin": {
     "claude-dock": "bin/cli.js"
   },
   "keywords": [
     "claude",
+    "claude-code",
+    "amp",
+    "codex",
+    "openai",
+    "sourcegraph",
+    "ai-coding",
     "hammerspoon",
     "macos",
     "terminal",
