@@ -1,4 +1,5 @@
 -- Claude Dock: Terminal dock for managing Claude Code sessions
+-- https://github.com/YOUR_USERNAME/claude-dock
 
 require("hs.ipc")
 
@@ -33,6 +34,7 @@ local config = {
 local slotCount = config.initialSlots
 local slots = {}
 local dock = nil
+local tooltip = nil
 
 -- Resource handles (for cleanup on reload)
 local windowFilter = nil
@@ -56,6 +58,10 @@ local function cleanup()
     if dock then
         dock:delete()
         dock = nil
+    end
+    if tooltip then
+        tooltip:delete()
+        tooltip = nil
     end
 end
 cleanup()  -- Clean up any previous instance
@@ -105,6 +111,46 @@ local function getWindowTitle(win)
         title = title:sub(1, 15) .. "..."
     end
     return title
+end
+
+-- Tooltip helpers
+local function showTooltip(text)
+    if tooltip then tooltip:delete() end
+    local dockFrame = getDockFrame()
+    if not dockFrame then return end
+
+    local tipWidth = 50
+    local tipHeight = 24
+    local addBtnX = dockFrame.x + config.margin + (slotCount * (config.slotWidth + config.gap))
+    local tipX = addBtnX + (config.addButtonWidth - tipWidth) / 2
+    local tipY = dockFrame.y - tipHeight - 5
+
+    tooltip = hs.canvas.new({ x = tipX, y = tipY, w = tipWidth, h = tipHeight })
+    tooltip:appendElements({
+        type = "rectangle",
+        action = "fill",
+        roundedRectRadii = { xRadius = 6, yRadius = 6 },
+        fillColor = { red = 0.2, green = 0.2, blue = 0.2, alpha = 0.95 },
+        frame = { x = 0, y = 0, w = "100%", h = "100%" },
+    })
+    tooltip:appendElements({
+        type = "text",
+        frame = { x = 0, y = 4, w = tipWidth, h = tipHeight },
+        text = text,
+        textAlignment = "center",
+        textColor = { red = 1, green = 1, blue = 1, alpha = 1 },
+        textSize = 12,
+        textFont = ".AppleSystemUIFont",
+    })
+    tooltip:level(hs.canvas.windowLevels.floating)
+    tooltip:show()
+end
+
+local function hideTooltip()
+    if tooltip then
+        tooltip:delete()
+        tooltip = nil
+    end
 end
 
 -- Forward declarations
@@ -355,11 +401,12 @@ createDock = function()
         roundedRectRadii = { xRadius = 10, yRadius = 10 },
         fillColor = config.colors.addBtnBg,
         trackMouseUp = true,
+        trackMouseEnterExit = true,
         id = "addBtn",
     })
     dock:appendElements({
         type = "text",
-        frame = { x = addBtnX, y = config.margin + 15, w = config.addButtonWidth, h = 30 },
+        frame = { x = addBtnX, y = config.margin + 13, w = config.addButtonWidth, h = 30 },
         text = "+",
         textAlignment = "center",
         textColor = config.colors.addBtnText,
@@ -378,6 +425,10 @@ createDock = function()
                     onSlotClick(idx, mods.alt)
                 end
             end
+        elseif event == "mouseEnter" and id == "addBtn" then
+            showTooltip("⌘⌥N")
+        elseif event == "mouseExit" and id == "addBtn" then
+            hideTooltip()
         end
     end)
 
