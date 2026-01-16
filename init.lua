@@ -64,7 +64,7 @@ cleanup()  -- Clean up any previous instance
 local function initSlots()
     for i = 1, slotCount do
         if not slots[i] then
-            slots[i] = { windowId = nil, customName = nil }
+            slots[i] = { windowId = nil, customName = nil, pending = false }
         end
     end
 end
@@ -133,10 +133,16 @@ local function updateSlotDisplay(slotIndex)
             bgColor = config.colors.slotActive
         end
     else
-        slot.windowId = nil
-        slot.customName = nil
-        title = "Empty"
-        status = "click to open"
+        -- Don't clear customName if we're waiting for a window to spawn
+        if not slot.pending then
+            slot.windowId = nil
+            slot.customName = nil
+            title = "Empty"
+            status = "click to open"
+        else
+            title = slot.customName or "Opening..."
+            status = "launching"
+        end
         bgColor = config.colors.slotEmpty
     end
 
@@ -176,6 +182,7 @@ end
 local function captureNewWindow(slot, retryCount)
     retryCount = retryCount or 0
     if retryCount >= config.windowCaptureRetries then
+        slot.pending = false
         updateAllSlots()
         return
     end
@@ -200,6 +207,7 @@ local function captureNewWindow(slot, retryCount)
         end
         if not isTracked then
             slot.windowId = winId
+            slot.pending = false
             updateAllSlots()
             return
         end
@@ -239,6 +247,7 @@ local function onSlotClick(slotIndex, isOptionClick)
         end
 
         slot.customName = (newName and newName ~= "") and newName or ("Claude " .. slotIndex)
+        slot.pending = true
 
         hs.applescript([[
             tell application "Terminal"
@@ -256,7 +265,7 @@ end
 -- Add a new slot and launch terminal
 local function addSlot()
     slotCount = slotCount + 1
-    slots[slotCount] = { windowId = nil, customName = nil }
+    slots[slotCount] = { windowId = nil, customName = nil, pending = false }
 
     if dock then
         dock:delete()
