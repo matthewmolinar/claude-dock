@@ -11,9 +11,10 @@ local config = {
     margin = 10,
     bottomOffset = 5,
     addButtonWidth = 40,
+    utilityButtonWidth = 28,
     initialSlots = 3,
     elementsPerSlot = 4,  -- bg, border, title, status
-    baseElements = 2,     -- dock bg + border
+    baseElements = 4,     -- dock bg + border + minimize btn + minimize text
     windowCaptureDelay = 0.3,
     windowCaptureRetries = 5,
     colors = {
@@ -27,6 +28,8 @@ local config = {
         textSecondary = { red = 0.5, green = 0.5, blue = 0.5, alpha = 1 },
         addBtnBg = { red = 0.2, green = 0.25, blue = 0.2, alpha = 1 },
         addBtnText = { red = 0.6, green = 0.8, blue = 0.6, alpha = 1 },
+        minBtnBg = { red = 0.18, green = 0.18, blue = 0.25, alpha = 1 },
+        minBtnText = { red = 0.6, green = 0.6, blue = 0.9, alpha = 1 },
     }
 }
 
@@ -77,7 +80,10 @@ initSlots()
 
 -- Calculate dock dimensions
 local function getDockWidth()
-    return (config.slotWidth * slotCount) + (config.gap * slotCount) + (config.margin * 2) + config.addButtonWidth
+    -- Left: small utility button (minimize), Right: add button
+    local leftButtonWidth = config.utilityButtonWidth + config.gap
+    local rightButtonWidth = config.addButtonWidth
+    return leftButtonWidth + (config.slotWidth * slotCount) + (config.gap * (slotCount - 1)) + config.gap + rightButtonWidth + (config.margin * 2)
 end
 
 local function getDockHeight()
@@ -114,18 +120,13 @@ local function getWindowTitle(win)
 end
 
 -- Tooltip helpers
-local function showTooltip(text)
+local function showTooltipAt(text, x, y)
     if tooltip then tooltip:delete() end
-    local dockFrame = getDockFrame()
-    if not dockFrame then return end
 
     local tipWidth = 50
     local tipHeight = 24
-    local addBtnX = dockFrame.x + config.margin + (slotCount * (config.slotWidth + config.gap))
-    local tipX = addBtnX + (config.addButtonWidth - tipWidth) / 2
-    local tipY = dockFrame.y - tipHeight - 5
 
-    tooltip = hs.canvas.new({ x = tipX, y = tipY, w = tipWidth, h = tipHeight })
+    tooltip = hs.canvas.new({ x = x, y = y, w = tipWidth, h = tipHeight })
     tooltip:appendElements({
         type = "rectangle",
         action = "fill",
@@ -146,6 +147,30 @@ local function showTooltip(text)
     tooltip:show()
 end
 
+local function showButtonTooltip(text, buttonId)
+    local dockFrame = getDockFrame()
+    if not dockFrame then return end
+
+    local tipWidth = 50
+    local tipHeight = 24
+    local btnX, btnWidth
+
+    if buttonId == "minBtn" then
+        -- Left side utility button
+        btnX = dockFrame.x + config.margin
+        btnWidth = config.utilityButtonWidth
+    else
+        -- Right side add button
+        btnX = dockFrame.x + config.margin + config.utilityButtonWidth + config.gap + (slotCount * config.slotWidth) + (slotCount * config.gap)
+        btnWidth = config.addButtonWidth
+    end
+
+    local tipX = btnX + (btnWidth - tipWidth) / 2
+    local tipY = dockFrame.y - tipHeight - 5
+
+    showTooltipAt(text, tipX, tipY)
+end
+
 local function hideTooltip()
     if tooltip then
         tooltip:delete()
@@ -156,6 +181,7 @@ end
 -- Forward declarations
 local createDock
 local updateAllSlots
+local minimizeAllTerminals
 
 -- Update slot display
 local function updateSlotDisplay(slotIndex)
@@ -348,9 +374,36 @@ createDock = function()
         frame = { x = 0, y = 0, w = "100%", h = "100%" },
     })
 
-    -- Slots
+    -- Minimize button (left side, small utility style)
+    local minBtnX = config.margin
+    local minBtnHeight = 28
+    local minBtnY = config.margin + (config.slotHeight - minBtnHeight) / 2
+    dock:appendElements({
+        type = "rectangle",
+        action = "fill",
+        frame = { x = minBtnX, y = minBtnY, w = config.utilityButtonWidth, h = minBtnHeight },
+        roundedRectRadii = { xRadius = 6, yRadius = 6 },
+        fillColor = config.colors.minBtnBg,
+        trackMouseUp = true,
+        trackMouseEnterExit = true,
+        id = "minBtn",
+    })
+    dock:appendElements({
+        type = "text",
+        frame = { x = minBtnX, y = minBtnY + 2, w = config.utilityButtonWidth, h = minBtnHeight },
+        text = "⌄",
+        textAlignment = "center",
+        textColor = config.colors.minBtnText,
+        textSize = 18,
+        textFont = ".AppleSystemUIFont",
+        trackMouseUp = true,
+        id = "minBtn",
+    })
+
+    -- Slots (offset by utility button)
+    local slotsStartX = config.margin + config.utilityButtonWidth + config.gap
     for i = 1, slotCount do
-        local slotX = config.margin + ((i - 1) * (config.slotWidth + config.gap))
+        local slotX = slotsStartX + ((i - 1) * (config.slotWidth + config.gap))
 
         dock:appendElements({
             type = "rectangle",
@@ -392,8 +445,8 @@ createDock = function()
         })
     end
 
-    -- Add button
-    local addBtnX = config.margin + (slotCount * (config.slotWidth + config.gap))
+    -- Add button (right side)
+    local addBtnX = slotsStartX + (slotCount * (config.slotWidth + config.gap))
     dock:appendElements({
         type = "rectangle",
         action = "fill",
@@ -412,12 +465,16 @@ createDock = function()
         textColor = config.colors.addBtnText,
         textSize = 28,
         textFont = ".AppleSystemUIFont",
+        trackMouseUp = true,
+        id = "addBtn",
     })
 
     dock:mouseCallback(function(_, event, id)
         if event == "mouseUp" then
             if id == "addBtn" then
                 addSlot()
+            elseif id == "minBtn" then
+                minimizeAllTerminals()
             elseif id and id:match("^slot") then
                 local idx = tonumber(id:match("%d+"))
                 if idx then
@@ -425,9 +482,13 @@ createDock = function()
                     onSlotClick(idx, mods.alt)
                 end
             end
-        elseif event == "mouseEnter" and id == "addBtn" then
-            showTooltip("⌘⌥N")
-        elseif event == "mouseExit" and id == "addBtn" then
+        elseif event == "mouseEnter" then
+            if id == "addBtn" then
+                showButtonTooltip("⌘⌥N", "addBtn")
+            elseif id == "minBtn" then
+                showButtonTooltip("⌘⌥M", "minBtn")
+            end
+        elseif event == "mouseExit" and (id == "addBtn" or id == "minBtn") then
             hideTooltip()
         end
     end)
@@ -442,6 +503,22 @@ local function toggleDock()
     if dock then
         if dock:isShowing() then dock:hide() else dock:show() end
     end
+end
+
+-- Minimize all terminal windows
+minimizeAllTerminals = function()
+    local minimizedCount = 0
+    for _, slot in ipairs(slots) do
+        local win = getWindow(slot.windowId)
+        if win and not win:isMinimized() then
+            win:minimize()
+            minimizedCount = minimizedCount + 1
+        end
+    end
+    if minimizedCount > 0 then
+        hs.alert.show("Minimized " .. minimizedCount .. " terminal" .. (minimizedCount > 1 and "s" or ""))
+    end
+    updateAllSlots()
 end
 
 -- Window event watcher for immediate updates
@@ -477,6 +554,7 @@ createDock()
 -- Hotkeys
 hs.hotkey.bind({"cmd", "alt"}, "T", toggleDock)
 hs.hotkey.bind({"cmd", "alt"}, "N", addSlot)
+hs.hotkey.bind({"cmd", "alt"}, "M", minimizeAllTerminals)
 hs.hotkey.bind({"cmd", "alt"}, "R", hs.reload)
 
 hs.alert.show("Claude Dock Ready")
@@ -487,7 +565,11 @@ hs.alert.show("Claude Dock Ready")
 
 function runTests()
     local passed, failed = 0, 0
-    local savedSlotCount, savedSlots = slotCount, slots
+    local savedSlotCount = slotCount
+    local savedSlots = {}
+    for i, s in ipairs(slots) do
+        savedSlots[i] = { windowId = s.windowId, customName = s.customName, pending = s.pending }
+    end
 
     local function test(name, fn)
         local ok, err = pcall(fn)
@@ -507,7 +589,11 @@ function runTests()
     end
 
     local function restore()
-        slotCount, slots = savedSlotCount, savedSlots
+        slotCount = savedSlotCount
+        slots = {}
+        for i, s in ipairs(savedSlots) do
+            slots[i] = { windowId = s.windowId, customName = s.customName, pending = s.pending }
+        end
     end
 
     print("\n=== Claude Dock Tests ===\n")
@@ -596,6 +682,26 @@ function runTests()
         local frame = getDockFrame()
         assert(frame, "frame should exist")
         assert(frame.x and frame.y and frame.w and frame.h, "frame should have x,y,w,h")
+    end)
+
+    test("minimizeAllTerminals is a function", function()
+        assert(type(minimizeAllTerminals) == "function", "minimizeAllTerminals should be a function")
+    end)
+
+    test("minimizeAllTerminals handles empty slots", function()
+        slots = {{ windowId = nil }, { windowId = nil }}
+        slotCount = 2
+        local ok = pcall(minimizeAllTerminals)
+        restore()
+        assert(ok, "should not error with empty slots")
+    end)
+
+    test("minimizeAllTerminals handles invalid windowIds", function()
+        slots = {{ windowId = 999999999 }, { windowId = 888888888 }}
+        slotCount = 2
+        local ok = pcall(minimizeAllTerminals)
+        restore()
+        assert(ok, "should not error with invalid windowIds")
     end)
 
     print("\n=== Results: " .. passed .. " passed, " .. failed .. " failed ===\n")
