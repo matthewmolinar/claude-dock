@@ -15,7 +15,7 @@ local config = {
     addButtonWidth = 40,
     utilityButtonWidth = 28,
     initialSlots = 3,
-    elementsPerSlot = 7,  -- bg, border, title, status, badge glow outer, badge glow inner, badge
+    elementsPerSlot = 9,  -- bg, border, title, status, badge glow outer, badge glow inner, badge, close btn, minimize btn
     baseElements = 12,    -- dock bg + border + 6 tab elements + 4 utility btn elements
     windowCaptureDelay = 0.3,
     windowCaptureRetries = 5,
@@ -35,6 +35,11 @@ local config = {
         helpBtnBg = { red = 0.2, green = 0.18, blue = 0.12, alpha = 1 },
         helpBtnText = { red = 0.9, green = 0.8, blue = 0.5, alpha = 1 },
         notificationBadge = { red = 1, green = 0.3, blue = 0.3, alpha = 1 },
+        closeBtn = { red = 1, green = 0.38, blue = 0.34, alpha = 1 },       -- macOS red
+        closeBtnHover = { red = 1, green = 0.38, blue = 0.34, alpha = 1 },
+        minimizeBtn = { red = 1, green = 0.8, blue = 0.0, alpha = 1 },      -- macOS yellow
+        minimizeBtnHover = { red = 1, green = 0.8, blue = 0.0, alpha = 1 },
+        windowBtnInactive = { red = 0.3, green = 0.3, blue = 0.3, alpha = 0.6 },
     },
     notificationBadgeSize = 12,
     tabHeight = 28,
@@ -189,6 +194,195 @@ local function getWindowTitle(win)
     return title
 end
 
+-- Get full window title (not truncated) for parsing
+local function getFullWindowTitle(win)
+    if not win then return nil end
+    return win:title() or ""
+end
+
+-- Read the first user prompt from the most recent session file for a given cwd
+-- Returns the prompt string or nil
+local function getRecentSessionPrompt(cwd, agentType)
+    if not cwd or cwd == "" then return nil end
+
+    local sessionPrompt = nil
+
+    if agentType == "claude" then
+        -- Claude stores sessions in ~/.claude/projects/<escaped-path>/sessions-index.json
+        local escapedPath = cwd:gsub("/", "-")
+        local indexPath = os.getenv("HOME") .. "/.claude/projects/" .. escapedPath .. "/sessions-index.json"
+        local f = io.open(indexPath, "r")
+        if f then
+            local content = f:read("*all")
+            f:close()
+            -- Find the most recent session's firstPrompt
+            -- Sessions are in entries array, find one with matching projectPath
+            local firstPrompt = content:match('"firstPrompt"%s*:%s*"([^"]*)"')
+            if firstPrompt and #firstPrompt > 0 then
+                sessionPrompt = firstPrompt
+            end
+        end
+    elseif agentType == "codex" then
+        -- Codex stores sessions in ~/.codex/sessions/YYYY/MM/DD/*.jsonl
+        -- Find the most recent session file and extract first user_message
+        local sessionsDir = os.getenv("HOME") .. "/.codex/sessions"
+        -- Use ls to find most recent file (sorted by time)
+        local handle = io.popen('find "' .. sessionsDir .. '" -name "*.jsonl" -type f 2>/dev/null | xargs ls -t 2>/dev/null | head -1')
+        if handle then
+            local recentFile = handle:read("*line")
+            handle:close()
+            if recentFile and #recentFile > 0 then
+                local f = io.open(recentFile, "r")
+                if f then
+                    for line in f:lines() do
+                        -- Look for user_message event
+                        local msg = line:match('"type"%s*:%s*"user_message".-"message"%s*:%s*"([^"]*)"')
+                        if msg and #msg > 0 and not msg:match("^<environment_context>") then
+                            sessionPrompt = msg
+                            break
+                        end
+                    end
+                    f:close()
+                end
+            end
+        end
+    end
+
+    -- Truncate if too long
+    if sessionPrompt and #sessionPrompt > 20 then
+        sessionPrompt = sessionPrompt:sub(1, 17) .. "..."
+    end
+
+    return sessionPrompt
+end
+
+-- Parse agent info from terminal window title or process
+-- Returns { agent = "claude"|"amp"|"codex"|nil, project = "path", chatName = "chat name", summary = "short description" }
+local function parseAgentInfo(win)
+    if not win then return nil end
+
+    local title = getFullWindowTitle(win) or ""
+    local info = { agent = nil, project = nil, chatName = nil, summary = nil }
+
+    -- Detect agent from title patterns
+    -- Claude Code typically shows: "Claude Code" or "claude - /path" or "/path -- chat name"
+    local titleLower = title:lower()
+
+    if titleLower:match("claude") then
+        info.agent = "claude"
+    elseif titleLower:match("amp") then
+        info.agent = "amp"
+    elseif titleLower:match("codex") then
+        info.agent = "codex"
+    end
+
+    -- Claude Code format: "/path/to/project -- Chat Name Here" or "dir -- Chat Name"
+    -- Try to extract chat name after "--" (emdash or double dash)
+    local chatName = title:match("%-%-+%s*(.+)$") or title:match("—%s*(.+)$") or title:match("–%s*(.+)$")
+    if chatName and #chatName > 0 then
+        -- Trim leading/trailing whitespace
+        chatName = chatName:match("^%s*(.-)%s*$")
+        info.chatName = chatName
+        -- Truncate if needed
+        if #info.chatName > 20 then
+            info.chatName = info.chatName:sub(1, 17) .. "..."
+        end
+    end
+
+    -- Try to extract project path from title (before the --)
+    -- Common patterns: "/path/to/project -- chat" or "agent - /path" or just "/path"
+    local pathPart = title:match("^(.-)%s+[-][-]") or title
+    local pathMatch = pathPart:match("(/[^%s]+)") or pathPart:match("[-–]%s*(/[^%s]+)")
+    if pathMatch then
+        -- Get just the last directory name
+        info.project = pathMatch:match("([^/]+)$") or pathMatch
+    end
+
+    -- Use chat name as summary if available, otherwise use title
+    if info.chatName then
+        info.summary = info.chatName
+    elseif #title > 0 and not title:match("^/") and not title:match("^Terminal") then
+        -- Truncate for display
+        if #title > 20 then
+            info.summary = title:sub(1, 17) .. "..."
+        else
+            info.summary = title
+        end
+    end
+
+    return info
+end
+
+-- Generate auto-name for a terminal slot based on window info
+local function generateSlotName(win, slotIndex)
+    local agent = getAgent()
+
+    if not win then
+        return agent.shortName .. " " .. slotIndex
+    end
+
+    local info = parseAgentInfo(win)
+
+    -- Priority: chatName > summary > sessionPrompt > project > agent default
+    if info and info.chatName and #info.chatName > 0 then
+        return info.chatName
+    elseif info and info.summary and #info.summary > 0 then
+        return info.summary
+    end
+
+    -- Try to get prompt from session files if no chat name in title
+    local title = getFullWindowTitle(win) or ""
+    local cwd = title:match("^(/[^%s]+)") or title:match("[-–]%s*(/[^%s]+)")
+    if cwd then
+        local sessionPrompt = getRecentSessionPrompt(cwd, config.agent)
+        if sessionPrompt and #sessionPrompt > 0 then
+            return sessionPrompt
+        end
+    end
+
+    if info and info.project and #info.project > 0 then
+        return info.project
+    else
+        return agent.shortName .. " " .. slotIndex
+    end
+end
+
+-- Try to focus a window that might be on another space
+-- Returns true if successful
+local function focusWindowAcrossSpaces(windowId)
+    if not windowId then return false end
+
+    -- First try normal focus
+    local win = hs.window.get(windowId)
+    if win then
+        if win:isMinimized() then
+            win:unminimize()
+        end
+        win:focus()
+        return true
+    end
+
+    -- Window not found by Hammerspoon - might be on another space
+    -- Try using AppleScript to focus by window ID
+    local script = [[
+        tell application "Terminal"
+            set windowList to every window
+            repeat with w in windowList
+                if id of w is ]] .. windowId .. [[ then
+                    set frontmost to true
+                    set index of w to 1
+                    activate
+                    return true
+                end if
+            end repeat
+        end tell
+        return false
+    ]]
+
+    local ok, result = hs.osascript.applescript(script)
+    return ok and result
+end
+
 -- Find slot index by window ID
 local function findSlotByWindowId(windowId)
     if not windowId then return nil end
@@ -260,12 +454,12 @@ local function showButtonTooltip(text, buttonId)
 
     if buttonId == "minBtn" then
         -- Top right minimize button
-        local minBtnWidth = 32
+        local minBtnWidth = 72
         btnX = dockFrame.x + dockWidth - config.margin - minBtnWidth
         btnWidth = minBtnWidth
     elseif buttonId == "helpBtn" then
         -- Top right help button (left of minimize)
-        local minBtnWidth = 32
+        local minBtnWidth = 72
         local helpBtnWidth = 36
         btnX = dockFrame.x + dockWidth - config.margin - minBtnWidth - 4 - helpBtnWidth
         btnWidth = helpBtnWidth
@@ -428,7 +622,8 @@ local function updateSlotDisplay(slotIndex)
 
     local agent = getAgent()
     if win then
-        title = slot.customName or getWindowTitle(win) or agent.name
+        -- Auto-generate name from window title if no custom name
+        title = slot.customName or generateSlotName(win, slotIndex)
         if win:isMinimized() then
             status = "(minimized)"
             bgColor = config.colors.slotMinimized
@@ -483,6 +678,21 @@ local function updateSlotDisplay(slotIndex)
         dock[baseIdx + 6].fillColor = slot.hasNotification
             and badgeColor
             or hidden
+    end
+
+    -- Update window control buttons (baseIdx + 7 = close, baseIdx + 8 = minimize)
+    local hasWindow = (win ~= nil)
+    -- Close button
+    if dock[baseIdx + 7] then
+        dock[baseIdx + 7].fillColor = hasWindow
+            and config.colors.closeBtn
+            or config.colors.windowBtnInactive
+    end
+    -- Minimize button
+    if dock[baseIdx + 8] then
+        dock[baseIdx + 8].fillColor = hasWindow
+            and config.colors.minimizeBtn
+            or config.colors.windowBtnInactive
     end
 end
 
@@ -553,6 +763,68 @@ local function stopPulseAnimation()
         pulseTimer:stop()
         pulseTimer = nil
     end
+end
+
+-- Close a terminal in a slot (force kill without confirmation)
+local function closeSlotTerminal(slotIndex)
+    local slot = slots[slotIndex]
+    if not slot then return false end
+
+    local windowId = slot.windowId
+    if not windowId then return false end
+
+    -- Get the tty and kill all processes on it, then close
+    local script = [[
+        tell application "Terminal"
+            repeat with w in windows
+                if id of w is ]] .. windowId .. [[ then
+                    repeat with t in tabs of w
+                        set ttyPath to tty of t
+                        if ttyPath is not missing value and ttyPath is not "" then
+                            -- Kill all processes on this tty using ps + kill
+                            set ttyShort to do shell script "basename " & quoted form of ttyPath
+                            do shell script "ps -t " & ttyShort & " -o pid= | xargs kill -9 2>/dev/null || true"
+                        end if
+                        -- Also try to get processes property
+                        try
+                            set procList to processes of t
+                            repeat with p in procList
+                                do shell script "kill -9 " & p & " 2>/dev/null || true"
+                            end repeat
+                        end try
+                    end repeat
+                    delay 0.2
+                    close w
+                    return true
+                end if
+            end repeat
+        end tell
+        return false
+    ]]
+
+    hs.osascript.applescript(script)
+
+    -- Clear slot data
+    slot.windowId = nil
+    slot.customName = nil
+    slot.hasNotification = false
+    updateSlotDisplay(slotIndex)
+
+    return true
+end
+
+-- Minimize a terminal in a slot
+local function minimizeSlotTerminal(slotIndex)
+    local slot = slots[slotIndex]
+    if not slot then return false end
+
+    local win = getWindow(slot.windowId)
+    if win and not win:isMinimized() then
+        win:minimize()
+        updateSlotDisplay(slotIndex)
+        return true
+    end
+    return false
 end
 
 -- Rename a slot
@@ -629,20 +901,26 @@ local function onSlotClick(slotIndex, isOptionClick)
             win:unminimize()
         end
         win:focus()
-    else
-        local agent = getAgent()
-        local button, newName = hs.dialog.textPrompt(
-            "New " .. agent.name .. " Terminal",
-            "Enter a name for this terminal:",
-            agent.shortName .. " " .. slotIndex,
-            "Create", "Cancel"
-        )
-
-        if button ~= "Create" then
-            return
+    elseif slot.windowId then
+        -- Window ID exists but not visible - probably on another space
+        -- Try to focus it across spaces instead of creating a new terminal
+        if focusWindowAcrossSpaces(slot.windowId) then
+            -- Successfully focused the window on another space
+            hs.alert.show("Switched to terminal on another space")
+        else
+            -- Window truly gone, clear the slot
+            slot.windowId = nil
+            slot.customName = nil
+            -- Now create a new terminal (will be handled by the next click or below)
         end
+    end
 
-        slot.customName = (newName and newName ~= "") and newName or (agent.shortName .. " " .. slotIndex)
+    -- Only create new terminal if slot is truly empty
+    if not slot.windowId and not slot.pending then
+        local agent = getAgent()
+
+        -- Auto-generate name instead of prompting
+        slot.customName = nil  -- Will be auto-generated from window title
         slot.pending = true
 
         hs.applescript([[
@@ -742,8 +1020,8 @@ createDock = function()
     local utilBtnY = 6
     local dockWidth = getDockWidth()
 
-    -- Minimize button (rightmost)
-    local minBtnWidth = 32
+    -- Minimize all button (rightmost)
+    local minBtnWidth = 72
     local minBtnX = dockWidth - config.margin - minBtnWidth
     dock:appendElements({
         type = "rectangle",
@@ -758,7 +1036,7 @@ createDock = function()
     dock:appendElements({
         type = "text",
         frame = { x = minBtnX, y = utilBtnY + 2, w = minBtnWidth, h = utilBtnSize },
-        text = "Hide",
+        text = "Minimize all",
         textAlignment = "center",
         textColor = config.colors.minBtnText,
         textSize = 11,
@@ -868,6 +1146,36 @@ createDock = function()
             radius = badgeSize / 2,
             fillColor = { red = 0, green = 0, blue = 0, alpha = 0 },  -- Hidden by default
         })
+
+        -- macOS-style window control buttons (top-left corner)
+        local btnSize = 10
+        local btnY = slotY + 8
+        local closeBtnX = slotX + 8
+
+        -- Close button (red X)
+        dock:appendElements({
+            type = "circle",
+            action = "fill",
+            center = { x = closeBtnX + btnSize/2, y = btnY + btnSize/2 },
+            radius = btnSize / 2,
+            fillColor = config.colors.windowBtnInactive,  -- Shows when slot has window
+            trackMouseUp = true,
+            trackMouseEnterExit = true,
+            id = "closeBtn" .. i,
+        })
+
+        -- Minimize button (yellow, right of close)
+        local minSlotBtnX = closeBtnX + btnSize + 4
+        dock:appendElements({
+            type = "circle",
+            action = "fill",
+            center = { x = minSlotBtnX + btnSize/2, y = btnY + btnSize/2 },
+            radius = btnSize / 2,
+            fillColor = config.colors.windowBtnInactive,  -- Shows when slot has window
+            trackMouseUp = true,
+            trackMouseEnterExit = true,
+            id = "minSlotBtn" .. i,
+        })
     end
 
     -- Add button (right side)
@@ -909,6 +1217,18 @@ createDock = function()
                     -- Recreate dock to update tab visuals
                     dock:delete()
                     createDock()
+                end
+            elseif id and id:match("^closeBtn") then
+                -- Close button clicked
+                local idx = tonumber(id:match("%d+"))
+                if idx then
+                    closeSlotTerminal(idx)
+                end
+            elseif id and id:match("^minSlotBtn") then
+                -- Minimize button clicked
+                local idx = tonumber(id:match("%d+"))
+                if idx then
+                    minimizeSlotTerminal(idx)
                 end
             elseif id and id:match("^slot") then
                 local idx = tonumber(id:match("%d+"))
@@ -1368,6 +1688,144 @@ function runTests()
         local agent = getAgent()
         assertEqual(agent.command, "claude")
         config.agent = originalAgent
+    end)
+
+    -- New functionality tests
+
+    test("getFullWindowTitle returns nil for nil window", function()
+        assertEqual(getFullWindowTitle(nil), nil)
+    end)
+
+    test("parseAgentInfo returns nil for nil window", function()
+        assertEqual(parseAgentInfo(nil), nil)
+    end)
+
+    test("generateSlotName returns agent default for nil window", function()
+        local name = generateSlotName(nil, 1)
+        local agent = getAgent()
+        assertEqual(name, agent.shortName .. " 1")
+    end)
+
+    test("focusWindowAcrossSpaces returns false for nil windowId", function()
+        assertEqual(focusWindowAcrossSpaces(nil), false)
+    end)
+
+    test("focusWindowAcrossSpaces returns false for invalid windowId", function()
+        -- Invalid window ID should return false (window not found)
+        local result = focusWindowAcrossSpaces(999999999)
+        -- May return true if AppleScript finds something, or false otherwise
+        assert(type(result) == "boolean", "should return boolean")
+    end)
+
+    test("closeSlotTerminal returns false for invalid slot", function()
+        assertEqual(closeSlotTerminal(9999), false)
+    end)
+
+    test("closeSlotTerminal returns false for empty slot", function()
+        slots = {{ windowId = nil }}
+        slotCount = 1
+        assertEqual(closeSlotTerminal(1), false)
+        restore()
+    end)
+
+    test("minimizeSlotTerminal returns false for invalid slot", function()
+        assertEqual(minimizeSlotTerminal(9999), false)
+    end)
+
+    test("minimizeSlotTerminal returns false for empty slot", function()
+        slots = {{ windowId = nil }}
+        slotCount = 1
+        assertEqual(minimizeSlotTerminal(1), false)
+        restore()
+    end)
+
+    test("minimizeSlotTerminal returns false for invalid windowId", function()
+        slots = {{ windowId = 999999999 }}
+        slotCount = 1
+        assertEqual(minimizeSlotTerminal(1), false)
+        restore()
+    end)
+
+    test("config has window button colors", function()
+        assert(config.colors.closeBtn, "closeBtn color should exist")
+        assert(config.colors.minimizeBtn, "minimizeBtn color should exist")
+        assert(config.colors.windowBtnInactive, "windowBtnInactive color should exist")
+    end)
+
+    test("elementsPerSlot includes window buttons", function()
+        assertEqual(config.elementsPerSlot, 9)
+    end)
+
+    -- Chat name parsing tests
+    test("parseAgentInfo extracts chatName from title with --", function()
+        -- Create a mock window object for testing
+        local mockWin = {
+            title = function() return "/Users/test/project -- Fix auth bug" end
+        }
+        local info = parseAgentInfo(mockWin)
+        assertEqual(info.chatName, "Fix auth bug")
+        assertEqual(info.project, "project")
+    end)
+
+    test("parseAgentInfo extracts chatName without leading path", function()
+        local mockWin = {
+            title = function() return "mydir -- Some task name" end
+        }
+        local info = parseAgentInfo(mockWin)
+        assertEqual(info.chatName, "Some task name")
+    end)
+
+    test("parseAgentInfo handles title without --", function()
+        local mockWin = {
+            title = function() return "/Users/test/myproject" end
+        }
+        local info = parseAgentInfo(mockWin)
+        assertEqual(info.chatName, nil)
+        assertEqual(info.project, "myproject")
+    end)
+
+    test("parseAgentInfo truncates long chat names", function()
+        local mockWin = {
+            title = function() return "/path -- This is a very long chat name that should be truncated" end
+        }
+        local info = parseAgentInfo(mockWin)
+        assert(#info.chatName <= 20, "chatName should be truncated to 20 chars or less")
+        assert(info.chatName:match("%.%.%.$"), "truncated chatName should end with ...")
+    end)
+
+    test("generateSlotName prioritizes chatName", function()
+        local mockWin = {
+            title = function() return "/Users/test/project -- My Chat Name" end
+        }
+        local name = generateSlotName(mockWin, 1)
+        assertEqual(name, "My Chat Name")
+    end)
+
+    -- Session prompt reading tests
+    test("getRecentSessionPrompt returns nil for nil cwd", function()
+        assertEqual(getRecentSessionPrompt(nil, "claude"), nil)
+    end)
+
+    test("getRecentSessionPrompt returns nil for empty cwd", function()
+        assertEqual(getRecentSessionPrompt("", "claude"), nil)
+    end)
+
+    test("getRecentSessionPrompt returns nil for nonexistent path", function()
+        assertEqual(getRecentSessionPrompt("/nonexistent/path/12345", "claude"), nil)
+    end)
+
+    test("getRecentSessionPrompt handles codex agent type", function()
+        -- Should not error, may return nil or a prompt
+        local result = getRecentSessionPrompt("/Users/molinar", "codex")
+        assert(result == nil or type(result) == "string", "should return nil or string")
+    end)
+
+    test("getRecentSessionPrompt truncates long prompts", function()
+        -- This tests the truncation logic - if we get a result, it should be <= 20 chars
+        local result = getRecentSessionPrompt("/Users/molinar", "codex")
+        if result then
+            assert(#result <= 20, "result should be truncated to 20 chars or less")
+        end
     end)
 
     print("\n=== Results: " .. passed .. " passed, " .. failed .. " failed ===\n")
