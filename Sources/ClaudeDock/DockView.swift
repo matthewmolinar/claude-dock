@@ -1,111 +1,96 @@
 import SwiftUI
+import AppKit
 
 struct DockView: View {
     @ObservedObject var manager: TerminalManager
-    @State private var isRenaming = false
-    @State private var renameSlot: Slot?
-    @State private var renameText = ""
+    @State private var plusHovering = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 2) {
+            Text("MOLINAR")
+                .font(.system(size: 10, weight: .medium))
+                .tracking(4)
+                .foregroundColor(.white.opacity(0.35))
+                .padding(.horizontal, 12)
+
             ForEach(manager.slots) { slot in
                 SlotView(
                     slot: slot,
                     onClick: { handleClick(slot) },
-                    onOptionClick: { startRename(slot) }
+                    onOptionClick: { promptRename(slot) }
                 )
             }
 
-            // Add button
-            Button(action: { manager.addSlotAndLaunch() }) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.1))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
-
-                    Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .light))
-                        .foregroundColor(.white.opacity(0.6))
-                }
-                .frame(width: 40, height: 50)
+            Button(action: { handleAddSlot() }) {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .light))
+                    .foregroundColor(.white.opacity(plusHovering ? 0.5 : 0.2))
+                    .frame(width: 28, height: 32)
+                    .background(
+                        Capsule().fill(.white.opacity(plusHovering ? 0.08 : 0.0))
+                    )
             }
             .buttonStyle(.plain)
+            .onHover { h in plusHovering = h }
         }
-        .padding(10)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
         .background(
-            VisualEffectBlur()
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-        )
-        .sheet(isPresented: $isRenaming) {
-            RenameSheet(name: $renameText, isPresented: $isRenaming) {
-                if let slot = renameSlot {
-                    manager.renameSlot(slot, to: renameText)
-                }
+            ZStack {
+                VisualEffectBlur()
+                Color.black.opacity(0.55)
             }
-        }
+            .clipShape(Capsule())
+        )
     }
 
     private func handleClick(_ slot: Slot) {
         switch slot.state {
         case .empty:
-            startRename(slot, thenLaunch: true)
+            promptNameAndLaunch(slot)
         case .active, .minimized, .otherSpace:
             manager.focusSlot(slot)
         }
     }
 
-    private func startRename(_ slot: Slot, thenLaunch: Bool = false) {
-        renameSlot = slot
-        renameText = slot.name
-        isRenaming = true
-
-        if thenLaunch {
-            // After rename completes, launch terminal
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                // The sheet dismissal handler will check this
-            }
+    private func handleAddSlot() {
+        manager.addSlot()
+        if let newSlot = manager.slots.last {
+            promptNameAndLaunch(newSlot)
         }
     }
-}
 
-// MARK: - Rename Sheet
+    private func promptNameAndLaunch(_ slot: Slot) {
+        let name = showInputDialog(title: "New agent", defaultValue: slot.name)
+        guard let name = name, !name.isEmpty else { return }
+        manager.renameSlot(slot, to: name)
+        manager.launchTerminal(for: slot)
+    }
 
-struct RenameSheet: View {
-    @Binding var name: String
-    @Binding var isPresented: Bool
-    var onConfirm: () -> Void
+    private func promptRename(_ slot: Slot) {
+        let name = showInputDialog(title: "Rename", defaultValue: slot.name)
+        guard let name = name, !name.isEmpty else { return }
+        manager.renameSlot(slot, to: name)
+    }
 
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Name this slot")
-                .font(.headline)
+    private func showInputDialog(title: String, defaultValue: String) -> String? {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
 
-            TextField("Enter name", text: $name)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 200)
-                .onSubmit { confirm() }
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+        input.stringValue = defaultValue
+        alert.accessoryView = input
+        alert.window.initialFirstResponder = input
 
-            HStack(spacing: 12) {
-                Button("Cancel") { isPresented = false }
-                    .keyboardShortcut(.cancelAction)
-
-                Button("OK") { confirm() }
-                    .keyboardShortcut(.defaultAction)
-            }
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            return input.stringValue
         }
-        .padding(20)
-    }
-
-    private func confirm() {
-        onConfirm()
-        isPresented = false
+        return nil
     }
 }
-
-// MARK: - Visual Effect (vibrancy blur)
 
 struct VisualEffectBlur: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {

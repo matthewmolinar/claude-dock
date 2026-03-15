@@ -1,69 +1,57 @@
 import SwiftUI
 
+enum Factory {
+    static let green = Color(red: 0.3, green: 0.95, blue: 0.5)
+    static let red = Color(red: 1.0, green: 0.3, blue: 0.25)
+}
+
 struct SlotView: View {
     @ObservedObject var slot: Slot
     var onClick: () -> Void
     var onOptionClick: () -> Void
+    @State private var isHovering = false
 
-    private var backgroundColor: Color {
+    private var dotColor: Color {
         switch slot.state {
-        case .empty:
-            return Color.gray.opacity(0.3)
-        case .active:
-            return Color.green.opacity(0.6)
-        case .minimized, .otherSpace:
-            return Color.blue.opacity(0.5)
+        case .empty: return .white.opacity(0.15)
+        case .active: return Factory.green
+        case .minimized, .otherSpace: return .white.opacity(0.4)
         }
     }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            // Slot background
-            RoundedRectangle(cornerRadius: 10)
-                .fill(backgroundColor)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                )
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 5, height: 5)
 
-            // Slot content
-            VStack(spacing: 2) {
                 Text(slot.name)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white)
+                    .font(.system(size: 13, weight: slot.state == .active ? .medium : .regular))
+                    .foregroundColor(slot.state == .empty ? .white.opacity(0.25) : .white.opacity(0.8))
                     .lineLimit(1)
-
-                Text(stateLabel)
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.6))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(height: 32)
+            .padding(.horizontal, 14)
+            .background(
+                Capsule()
+                    .fill(.white.opacity(isHovering ? 0.1 : 0.0))
+            )
 
-            // Notification badge
             if slot.hasNotification {
                 Circle()
-                    .fill(Color.red)
-                    .frame(width: 10, height: 10)
-                    .offset(x: -4, y: 4)
+                    .fill(Factory.red)
+                    .frame(width: 6, height: 6)
+                    .offset(x: -6, y: 2)
             }
         }
-        .frame(width: 130, height: 50)
+        .onHover { hovering in isHovering = hovering }
         .onTapGesture {
             if NSEvent.modifierFlags.contains(.option) {
                 onOptionClick()
             } else {
                 onClick()
             }
-        }
-        .help(slot.state == .empty ? "Click to open terminal" : "Click to focus • Option+Click to rename")
-    }
-
-    private var stateLabel: String {
-        switch slot.state {
-        case .empty: return "empty"
-        case .active: return "active"
-        case .minimized: return "minimized"
-        case .otherSpace: return "other space"
         }
     }
 }
