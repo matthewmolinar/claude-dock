@@ -72,6 +72,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "New Terminal", action: #selector(addNewSlot), keyEquivalent: "n"))
         menu.addItem(NSMenuItem(title: "Minimize All", action: #selector(minimizeAll), keyEquivalent: "m"))
         menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Move macOS Dock Left", action: #selector(moveMacOSDockLeft), keyEquivalent: "l"))
+        menu.addItem(NSMenuItem(title: "Move macOS Dock Bottom", action: #selector(moveMacOSDockBottom), keyEquivalent: "b"))
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         statusItem.menu = menu
@@ -84,7 +87,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             toggleDock: { [weak self] in self?.toggleDock() },
             newSlot: { [weak self] in self?.addNewSlot() },
             minimizeAll: { [weak self] in self?.minimizeAll() },
-            reload: { [weak self] in self?.reload() }
+            reload: { [weak self] in self?.reload() },
+            moveDockLeft: { [weak self] in self?.moveMacOSDock(to: "left") },
+            moveDockBottom: { [weak self] in self?.moveMacOSDock(to: "bottom") }
         )
     }
 
@@ -111,6 +116,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func reload() {
         positionDock()
+    }
+
+    @objc private func moveMacOSDockLeft() { moveMacOSDock(to: "left") }
+    @objc private func moveMacOSDockBottom() { moveMacOSDock(to: "bottom") }
+
+    private func moveMacOSDock(to orientation: String) {
+        let task = Process()
+        task.launchPath = "/usr/bin/defaults"
+        task.arguments = ["write", "com.apple.dock", "orientation", orientation]
+        do {
+            try task.run()
+            task.waitUntilExit()
+            // Restart the macOS Dock to apply
+            let killTask = Process()
+            killTask.launchPath = "/usr/bin/killall"
+            killTask.arguments = ["Dock"]
+            try killTask.run()
+            killTask.waitUntilExit()
+            print("macOS Dock moved to \(orientation)")
+            // Reposition claude-dock
+            positionDock()
+        } catch {
+            print("Failed to move macOS Dock: \(error)")
+        }
     }
 
     @objc private func selectAgent(_ sender: NSMenuItem) {
