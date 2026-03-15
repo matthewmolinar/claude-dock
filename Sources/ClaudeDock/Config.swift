@@ -41,7 +41,7 @@ enum DockPlacement: String, CaseIterable {
 struct DockConfig {
     var agent: Agent = .claude
     var placement: DockPlacement = .auto
-    var bottomOffset: CGFloat = 5
+    var bottomOffset: CGFloat = 20
     var sideOffset: CGFloat = 5
     var initialSlots: Int = 3
 

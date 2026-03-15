@@ -1,5 +1,8 @@
 import AppKit
 import SwiftUI
+import os.log
+
+private let appLogger = Logger(subsystem: "com.molinar.ClaudeDock", category: "AppDelegate")
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -7,6 +10,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var dockPanel: FloatingPanel<DockView>!
     private var terminalManager: TerminalManager!
     private var isDockVisible = true
+    private var slotCountObserver: Any?
+    private var projectObserver: Any?
+    private var lastSlotCount: Int = 0
+    private var lastProjectID: UUID?
+    private var isRebuilding = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -16,12 +24,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupDockPanel()
         setupMenuBar()
         setupHotkeys()
+        observeSlotChanges()
     }
 
     // MARK: - Dock Panel
 
     private func setupDockPanel() {
-        let dockView = DockView(manager: terminalManager)
+        let dockView = DockView(manager: terminalManager, projectManager: terminalManager.projectManager)
         dockPanel = FloatingPanel { dockView }
 
         positionDock()
@@ -30,7 +39,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func rebuildDockPanel() {
         dockPanel.orderOut(nil)
-        let dockView = DockView(manager: terminalManager)
+        let dockView = DockView(manager: terminalManager, projectManager: terminalManager.projectManager)
         dockPanel = FloatingPanel { dockView }
         positionDock()
         if isDockVisible {
@@ -76,9 +85,56 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             button.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Claude Dock")
         }
 
-        let menu = NSMenu()
+        rebuildMenu()
+    }
 
-        // Agent submenu
+    private func rebuildMenu() {
+        let menu = NSMenu()
+        let pm = terminalManager.projectManager
+
+        // --- Projects section ---
+        let projectsHeader = NSMenuItem(title: "Projects", action: nil, keyEquivalent: "")
+        projectsHeader.isEnabled = false
+        menu.addItem(projectsHeader)
+
+        if pm.projects.isEmpty {
+            let empty = NSMenuItem(title: "  No projects added", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+        } else {
+            for project in pm.projects {
+                let isActive = pm.activeProject?.id == project.id
+                let prefix = isActive ? "● " : "  "
+                let worktreeTag = project.useWorktrees ? " [worktree]" : ""
+
+                let item = NSMenuItem(
+                    title: "\(prefix)\(project.name)\(worktreeTag)",
+                    action: #selector(selectProject(_:)),
+                    keyEquivalent: ""
+                )
+                item.representedObject = project.id.uuidString
+                item.state = isActive ? .on : .off
+                menu.addItem(item)
+            }
+        }
+
+        menu.addItem(NSMenuItem(title: "  Add Project Folder...", action: #selector(addProject), keyEquivalent: "p"))
+
+        if let active = pm.activeProject {
+            let worktreeLabel = active.useWorktrees ? "  Disable Worktrees" : "  Enable Worktrees"
+            let wtItem = NSMenuItem(title: worktreeLabel, action: #selector(toggleWorktrees), keyEquivalent: "")
+            if !active.isGitRepo {
+                wtItem.isEnabled = false
+                wtItem.title = "  Worktrees (not a git repo)"
+            }
+            menu.addItem(wtItem)
+
+            menu.addItem(NSMenuItem(title: "  Remove Project", action: #selector(removeActiveProject), keyEquivalent: ""))
+        }
+
+        menu.addItem(.separator())
+
+        // --- Agent submenu ---
         let agentMenu = NSMenu()
         for agent in Agent.allCases {
             let item = NSMenuItem(title: agent.displayName, action: #selector(selectAgent(_:)), keyEquivalent: "")
@@ -90,7 +146,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         agentItem.submenu = agentMenu
         menu.addItem(agentItem)
 
-        // Placement submenu
+        // --- Placement submenu ---
         let placementMenu = NSMenu()
         for placement in DockPlacement.allCases {
             let item = NSMenuItem(title: placement.displayName, action: #selector(selectPlacement(_:)), keyEquivalent: "")
@@ -114,6 +170,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         statusItem.menu = menu
+    }
+
+    private func observeSlotChanges() {
+        lastSlotCount = terminalManager.slots.count
+        lastProjectID = terminalManager.projectManager.activeProject?.id
+
+        slotCountObserver = terminalManager.$slots.sink { [weak self] newSlots in
+            guard let self = self else { return }
+            let newCount = newSlots.count
+            if newCount != self.lastSlotCount && !self.isRebuilding {
+                self.lastSlotCount = newCount
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    self.safeRebuild()
+                }
+            }
+        }
+
+        projectObserver = terminalManager.projectManager.$activeProject.sink { [weak self] newProject in
+            guard let self = self else { return }
+            let newID = newProject?.id
+            if newID != self.lastProjectID && !self.isRebuilding {
+                self.lastProjectID = newID
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    self.safeRebuild()
+                }
+            }
+        }
+    }
+
+    private func safeRebuild() {
+        guard !isRebuilding else { return }
+        isRebuilding = true
+        appLogger.notice("safeRebuild: rebuilding panel")
+        rebuildDockPanel()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.isRebuilding = false
+        }
     }
 
     // MARK: - Hotkeys
@@ -167,7 +260,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             try killTask.run()
             killTask.waitUntilExit()
             print("macOS Dock moved to \(orientation)")
-            // Auto placement may have changed, rebuild
             if terminalManager.config.placement == .auto {
                 rebuildDockPanel()
             } else {
@@ -178,25 +270,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Project Actions
+
+    @objc private func addProject() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a project folder"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            terminalManager.projectManager.addProject(path: url.path)
+            rebuildMenu()
+        }
+    }
+
+    @objc private func selectProject(_ sender: NSMenuItem) {
+        guard let idStr = sender.representedObject as? String,
+              let id = UUID(uuidString: idStr),
+              let project = terminalManager.projectManager.projects.first(where: { $0.id == id })
+        else { return }
+        terminalManager.projectManager.setActive(project)
+        rebuildMenu()
+    }
+
+    @objc private func toggleWorktrees() {
+        guard let project = terminalManager.projectManager.activeProject else { return }
+        terminalManager.projectManager.toggleWorktrees(for: project)
+        rebuildMenu()
+    }
+
+    @objc private func removeActiveProject() {
+        guard let project = terminalManager.projectManager.activeProject else { return }
+        terminalManager.projectManager.removeProject(project)
+        rebuildMenu()
+    }
+
     @objc private func selectAgent(_ sender: NSMenuItem) {
         guard let agent = sender.representedObject as? Agent else { return }
         terminalManager.config.agent = agent
-        if let menu = sender.menu {
-            for item in menu.items {
-                item.state = (item.representedObject as? Agent) == agent ? .on : .off
-            }
-        }
+        rebuildMenu()
     }
 
     @objc private func selectPlacement(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let placement = DockPlacement(rawValue: raw) else { return }
         terminalManager.config.placement = placement
-        if let menu = sender.menu {
-            for item in menu.items {
-                item.state = (item.representedObject as? String) == raw ? .on : .off
-            }
-        }
+        rebuildMenu()
         rebuildDockPanel()
     }
 }
