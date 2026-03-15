@@ -82,8 +82,8 @@ class HotkeyManager {
         toggleDock: @escaping () -> Void,
         newSlot: @escaping () -> Void,
         minimizeAll: @escaping () -> Void,
-        reload: @escaping () -> Void,
         moveDockLeft: @escaping () -> Void,
+        moveDockRight: @escaping () -> Void,
         moveDockBottom: @escaping () -> Void
     ) {
         // Cmd+Option+T - Toggle dock (T = keycode 17)
@@ -92,10 +92,10 @@ class HotkeyManager {
         register(id: 2, keyCode: 45, modifiers: UInt32(Carbon.cmdKey) | UInt32(Carbon.optionKey), handler: newSlot)
         // Cmd+Option+M - Minimize all (M = keycode 46)
         register(id: 3, keyCode: 46, modifiers: UInt32(Carbon.cmdKey) | UInt32(Carbon.optionKey), handler: minimizeAll)
-        // Cmd+Option+R - Reload (R = keycode 15)
-        register(id: 4, keyCode: 15, modifiers: UInt32(Carbon.cmdKey) | UInt32(Carbon.optionKey), handler: reload)
         // Cmd+Option+L - Move macOS Dock to left (L = keycode 37)
-        register(id: 5, keyCode: 37, modifiers: UInt32(Carbon.cmdKey) | UInt32(Carbon.optionKey), handler: moveDockLeft)
+        register(id: 4, keyCode: 37, modifiers: UInt32(Carbon.cmdKey) | UInt32(Carbon.optionKey), handler: moveDockLeft)
+        // Cmd+Option+R - Move macOS Dock to right (R = keycode 15)
+        register(id: 5, keyCode: 15, modifiers: UInt32(Carbon.cmdKey) | UInt32(Carbon.optionKey), handler: moveDockRight)
         // Cmd+Option+B - Move macOS Dock to bottom (B = keycode 11)
         register(id: 6, keyCode: 11, modifiers: UInt32(Carbon.cmdKey) | UInt32(Carbon.optionKey), handler: moveDockBottom)
     }

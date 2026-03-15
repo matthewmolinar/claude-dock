@@ -5,17 +5,33 @@ struct DockView: View {
     @ObservedObject var manager: TerminalManager
     @State private var plusHovering = false
 
+    private var isVertical: Bool { manager.config.isVertical }
+
     var body: some View {
-        HStack(spacing: 2) {
-            Text("MOLINAR")
-                .font(.system(size: 10, weight: .medium))
-                .tracking(4)
-                .foregroundColor(.white.opacity(0.35))
-                .padding(.horizontal, 12)
+        let layout = isVertical ? AnyLayout(VStackLayout(spacing: 2)) : AnyLayout(HStackLayout(spacing: 2))
+
+        layout {
+            // Logo
+            if isVertical {
+                Text("MOLINAR")
+                    .font(.system(size: 9, weight: .medium))
+                    .tracking(3)
+                    .foregroundColor(.white.opacity(0.35))
+                    .fixedSize()
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 36, height: 80)
+            } else {
+                Text("MOLINAR")
+                    .font(.system(size: 10, weight: .medium))
+                    .tracking(4)
+                    .foregroundColor(.white.opacity(0.35))
+                    .padding(.horizontal, 10)
+            }
 
             ForEach(manager.slots) { slot in
                 SlotView(
                     slot: slot,
+                    isVertical: isVertical,
                     onClick: { handleClick(slot) },
                     onOptionClick: { promptRename(slot) }
                 )
@@ -25,7 +41,10 @@ struct DockView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 11, weight: .light))
                     .foregroundColor(.white.opacity(plusHovering ? 0.5 : 0.2))
-                    .frame(width: 28, height: 32)
+                    .frame(
+                        width: isVertical ? 36 : 28,
+                        height: isVertical ? 28 : 48
+                    )
                     .background(
                         Capsule().fill(.white.opacity(plusHovering ? 0.08 : 0.0))
                     )
@@ -33,8 +52,8 @@ struct DockView: View {
             .buttonStyle(.plain)
             .onHover { h in plusHovering = h }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 5)
+        .padding(isVertical ? .vertical : .horizontal, 6)
+        .padding(isVertical ? .horizontal : .vertical, 5)
         .background(
             ZStack {
                 VisualEffectBlur()
