@@ -2,16 +2,16 @@
 
 const path = require('path');
 const os = require('os');
-const { app, BrowserWindow, ipcMain, globalShortcut, screen, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, screen, dialog, shell } = require('electron');
 
 const { Store } = require('../shared/store');
 const { LAYOUT } = require('../shared/layout');
-const { AGENT_ORDER, AGENTS } = require('../shared/agents');
+const { KeyStore } = require('./keystore');
 const { SessionManager } = require('./session-manager');
 const {
   createDockWindow,
-  createTerminalWindow,
-  createHelpWindow,
+  createSessionWindow,
+  createSettingsWindow,
   repositionDock,
 } = require('./windows');
 
@@ -22,20 +22,10 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 let dockWin = null;
-let helpWin = null;
+let settingsWin = null;
 let sessions = null;
 let store = null;
-
-function toggleHelp() {
-  if (helpWin && !helpWin.isDestroyed()) {
-    helpWin.close();
-    return;
-  }
-  helpWin = createHelpWindow();
-  helpWin.on('closed', () => {
-    helpWin = null;
-  });
-}
+let keyStore = null;
 
 function pushState() {
   if (dockWin && !dockWin.isDestroyed()) {
@@ -53,9 +43,46 @@ function toggleDock() {
   else dockWin.showInactive();
 }
 
+function openSettings() {
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    settingsWin.focus();
+    return;
+  }
+  settingsWin = createSettingsWindow();
+  settingsWin.on('closed', () => {
+    settingsWin = null;
+  });
+}
+
+async function chooseFolder() {
+  const res = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'createDirectory'],
+    defaultPath: os.homedir(),
+    title: 'Choose a folder for this session',
+    buttonLabel: 'Use this folder',
+  });
+  return res.canceled ? null : res.filePaths[0];
+}
+
+/**
+ * Open a slot. A new session starts in the home folder — no picker. `reselect`
+ * (shift-click, or the folder button) is the only path that asks.
+ */
+async function openSlot(index, { reselect = false } = {}) {
+  if (!sessions.slots[index]) return;
+
+  if (reselect) {
+    const folder = await chooseFolder();
+    if (!folder) return;
+    sessions.activate(index, { folder });
+    return;
+  }
+  sessions.activate(index);
+}
+
 // ---------------------------------------------------------------------------
-// IPC — the dock renderer is untrusted-by-construction (contextIsolation), so
-// every handler validates its slot index before touching state.
+// IPC — renderers are untrusted by construction (contextIsolation), so every
+// handler validates its slot index before touching state.
 // ---------------------------------------------------------------------------
 
 function validIndex(i) {
@@ -63,14 +90,19 @@ function validIndex(i) {
 }
 
 function registerIpc() {
+  // --- dock ---------------------------------------------------------------
+
   ipcMain.handle('dock:init', () => ({
     layout: LAYOUT,
-    agents: AGENT_ORDER.map((k) => AGENTS[k]),
     state: sessions.snapshot(),
   }));
 
   ipcMain.on('slot:activate', (_e, index) => {
-    if (validIndex(index)) sessions.activate(index);
+    if (validIndex(index)) openSlot(index);
+  });
+
+  ipcMain.on('slot:activateIn', (_e, index) => {
+    if (validIndex(index)) openSlot(index, { reselect: true });
   });
 
   ipcMain.on('slot:close', (_e, index) => {
@@ -99,39 +131,68 @@ function registerIpc() {
     const index = sessions.addSlot();
     if (index === null) return;
     syncDockSize();
-    sessions.activate(index);
+    openSlot(index);
   });
 
   ipcMain.on('dock:minimizeAll', () => sessions.minimizeAll());
+  ipcMain.on('dock:openSettings', openSettings);
 
-  ipcMain.on('dock:toggleHelp', toggleHelp);
+  // --- session window -----------------------------------------------------
 
-  ipcMain.on('dock:setAgent', (_e, agentKey) => {
-    if (typeof agentKey === 'string' && AGENTS[agentKey]) sessions.setAgent(agentKey);
+  ipcMain.handle('session:init', (_e, index) =>
+    validIndex(index) ? sessions.sessionState(index) : null
+  );
+
+  ipcMain.on('session:prompt', (_e, index, text) => {
+    if (validIndex(index) && typeof text === 'string') sessions.prompt(index, text);
   });
 
-  ipcMain.handle('dock:chooseFolder', async () => {
-    const res = await dialog.showOpenDialog({
-      properties: ['openDirectory', 'createDirectory'],
-      defaultPath: os.homedir(),
-      title: 'Open agent session in folder',
-    });
-    return res.canceled ? null : res.filePaths[0];
+  ipcMain.on('session:stop', (_e, index) => {
+    if (validIndex(index)) sessions.stop(index);
   });
 
-  ipcMain.on('slot:activateIn', (_e, index, cwd) => {
-    if (validIndex(index) && typeof cwd === 'string') sessions.activate(index, { cwd });
+  ipcMain.on('session:openSettings', openSettings);
+
+  ipcMain.on('session:revealFolder', (_e, index) => {
+    const slot = validIndex(index) && sessions.slots[index];
+    if (slot && slot.folder) shell.openPath(slot.folder);
   });
 
-  // --- terminal renderer ---------------------------------------------------
+  // --- settings -----------------------------------------------------------
 
-  ipcMain.on('term:ready', (_e, ptyId) => sessions.markReady(ptyId));
-  ipcMain.on('term:input', (_e, ptyId, data) => sessions.write(ptyId, data));
-  ipcMain.on('term:resize', (_e, ptyId, cols, rows) => sessions.resize(ptyId, cols, rows));
-  ipcMain.on('term:ack', (_e, ptyId, bytes) => sessions.ack(ptyId, bytes));
-  ipcMain.on('term:title', (_e, ptyId, title) => {
-    if (typeof title === 'string') sessions.setTitle(ptyId, title.slice(0, 200));
+  ipcMain.handle('settings:init', () => ({ hasKey: keyStore.has() }));
+
+  /**
+   * A key change has to reach two places: agents built with the old key are
+   * discarded, and every open session window updates its "add a key" banner.
+   */
+  function onKeyChanged() {
+    for (const slot of sessions.slots) slot.agent = null;
+    sessions.broadcast('session:key-state', { hasKey: keyStore.has() });
+  }
+
+  ipcMain.handle('settings:saveKey', (_e, key) => {
+    if (typeof key !== 'string') return { ok: false };
+    try {
+      keyStore.set(key);
+    } catch (err) {
+      return { ok: false, message: err.message };
+    }
+    onKeyChanged();
+    return { ok: true, hasKey: keyStore.has() };
   });
+
+  ipcMain.handle('settings:clearKey', () => {
+    keyStore.clear();
+    onKeyChanged();
+    return { ok: true, hasKey: false };
+  });
+
+  ipcMain.on('settings:openConsole', () =>
+    shell.openExternal('https://console.anthropic.com/settings/keys')
+  );
+
+  // --- shared window chrome ----------------------------------------------
 
   const winFor = (event) => BrowserWindow.fromWebContents(event.sender);
   ipcMain.on('win:minimize', (e) => winFor(e)?.minimize());
@@ -147,7 +208,7 @@ function registerIpc() {
 function registerHotkeys() {
   const bind = (accel, fn) => {
     if (!globalShortcut.register(accel, fn)) {
-      console.warn(`[claude-dock] hotkey already taken: ${accel}`);
+      console.warn(`[lore] hotkey already taken: ${accel}`);
     }
   };
   bind('Command+Alt+T', toggleDock);
@@ -155,7 +216,7 @@ function registerHotkeys() {
     const index = sessions.addSlot();
     if (index === null) return;
     syncDockSize();
-    sessions.activate(index);
+    openSlot(index);
   });
   bind('Command+Alt+M', () => sessions.minimizeAll());
   bind('Command+Alt+R', () => {
@@ -165,11 +226,9 @@ function registerHotkeys() {
 
 app.whenReady().then(() => {
   store = new Store(path.join(app.getPath('userData'), 'state.json'));
-  sessions = new SessionManager({ store, createTerminalWindow });
+  keyStore = new KeyStore();
+  sessions = new SessionManager({ store, keyStore, createSessionWindow });
   sessions.on('changed', pushState);
-  sessions.on('error', (err) => {
-    dialog.showErrorBox('Claude Dock', `Failed to start a terminal:\n\n${err.message}`);
-  });
 
   registerIpc();
   dockWin = createDockWindow(sessions.slotCount);
@@ -181,6 +240,9 @@ app.whenReady().then(() => {
   screen.on('display-metrics-changed', syncDockSize);
   screen.on('display-added', syncDockSize);
   screen.on('display-removed', syncDockSize);
+
+  // First run with no key: show the user where to put it.
+  if (!keyStore.has()) setTimeout(openSettings, 700);
 
   app.on('activate', () => {
     if (!dockWin || dockWin.isDestroyed()) {
@@ -196,7 +258,7 @@ app.on('second-instance', () => {
 });
 
 // The dock is the app. Registering any listener here suppresses Electron's
-// default quit-on-last-window, so closing every terminal leaves the dock alive.
+// default quit-on-last-window, so closing every session leaves the dock alive.
 app.on('window-all-closed', () => {});
 
 app.on('will-quit', () => {

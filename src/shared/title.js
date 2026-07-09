@@ -1,87 +1,37 @@
 'use strict';
 
 const path = require('path');
-const { getAgent } = require('./agents');
 
-const MAX_LABEL = 20;
+const MAX_LABEL = 22;
 
-/** Truncate to `max` chars total, with an ellipsis occupying the last 3. */
+/** Truncate to `max` chars total, with an ellipsis occupying the last character. */
 function truncate(text, max = MAX_LABEL) {
   if (typeof text !== 'string') return text;
-  if (text.length <= max) return text;
-  return text.slice(0, max - 3) + '...';
-}
-
-// Agents announce their state through the terminal's OSC 0/2 "set window title"
-// escape. Because we own the PTY we read that title directly from xterm, rather
-// than scraping Terminal.app window titles over AppleScript.
-const SEPARATOR = /--+\s*(.+)$|[—–]\s*(.+)$/;
-
-/**
- * Extract structured info from an agent-set terminal title.
- * Titles look like "/Users/me/project -- Fix auth bug" or just "/Users/me/proj".
- */
-function parseAgentInfo(title) {
-  if (typeof title !== 'string') return null;
-
-  const info = { agent: null, project: null, chatName: null, summary: null };
-  const lower = title.toLowerCase();
-
-  if (lower.includes('claude')) info.agent = 'claude';
-  else if (lower.includes('amp')) info.agent = 'amp';
-  else if (lower.includes('codex')) info.agent = 'codex';
-
-  const sep = title.match(SEPARATOR);
-  if (sep) {
-    const raw = (sep[1] || sep[2] || '').trim();
-    if (raw.length > 0) info.chatName = truncate(raw);
-  }
-
-  // The path, if present, is whatever precedes the separator.
-  const beforeSep = title.split(SEPARATOR)[0] || title;
-  const pathMatch = beforeSep.match(/(\/\S+)/);
-  if (pathMatch) {
-    const p = pathMatch[1].replace(/\/+$/, '');
-    info.project = path.basename(p) || p;
-  }
-
-  if (info.chatName) {
-    info.summary = info.chatName;
-  } else if (title.length > 0 && !title.startsWith('/')) {
-    info.summary = truncate(title);
-  }
-
-  return info;
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, max - 1).trimEnd()}…`;
 }
 
 /**
  * Resolve the label shown on a dock slot.
  *
- * Priority: user rename > agent-set title > session summary > cwd > "Claude 2".
+ * Priority: user rename > what they first asked for > folder name > "Session 2".
  */
-function generateSlotName({
-  customName,
-  title,
-  cwd,
-  sessionSummary,
-  agentKey,
-  index,
-} = {}) {
-  if (customName) return customName;
-
-  const info = title ? parseAgentInfo(title) : null;
-  if (info && info.chatName) return info.chatName;
-  if (info && info.summary) return info.summary;
-
-  if (sessionSummary) return truncate(sessionSummary);
-
-  if (info && info.project) return info.project;
-  if (cwd) {
-    const base = path.basename(cwd);
+function slotLabel({ customName, firstPrompt, folder, index } = {}) {
+  if (customName) return truncate(customName);
+  if (firstPrompt) return truncate(firstPrompt);
+  if (folder) {
+    const base = path.basename(folder);
     if (base) return truncate(base);
   }
-
-  return `${getAgent(agentKey).shortName} ${index}`;
+  return `Session ${index}`;
 }
 
-module.exports = { truncate, parseAgentInfo, generateSlotName, MAX_LABEL };
+/** "/Users/molinar/lore" -> "~/lore" */
+function prettyFolder(folder, home = process.env.HOME || '') {
+  if (!folder) return '';
+  if (home && folder.startsWith(home)) return `~${folder.slice(home.length)}`;
+  return folder;
+}
+
+module.exports = { truncate, slotLabel, prettyFolder, MAX_LABEL };

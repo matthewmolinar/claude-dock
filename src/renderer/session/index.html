@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; script-src 'self';"
+    />
+    <link rel="stylesheet" href="session.css" />
+    <title>Lore</title>
+  </head>
+  <body>
+    <header id="titlebar">
+      <div class="lights">
+        <button id="close" class="light close" aria-label="Close"></button>
+        <button id="min" class="light min" aria-label="Minimize"></button>
+        <button id="zoom" class="light zoom" aria-label="Zoom"></button>
+      </div>
+      <button id="folder" title="Open this folder in Finder"></button>
+    </header>
+
+    <main id="thread">
+      <div id="empty" aria-hidden="true">
+        <svg id="mascot" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polygon class="ear" points="27,17 56,30 41,45" />
+          <polygon class="ear" points="93,17 64,30 79,45" />
+          <rect class="body" x="20" y="45" width="82" height="75" rx="7" />
+        </svg>
+      </div>
+    </main>
+
+    <div id="needsKey" hidden>
+      <p>Add your Anthropic API key to get started.</p>
+      <button id="openSettings">Open Settings</button>
+    </div>
+
+    <footer id="composer">
+      <textarea
+        id="input"
+        rows="1"
+        placeholder="Ask for anything…"
+        autofocus
+      ></textarea>
+      <button id="send" aria-label="Send">↑</button>
+      <button id="stop" aria-label="Stop" hidden>Stop</button>
+    </footer>
+
+    <script src="session.js"></script>
+  </body>
+</html>

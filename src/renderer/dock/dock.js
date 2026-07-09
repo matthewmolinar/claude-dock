@@ -1,13 +1,13 @@
 'use strict';
 
 const slotsEl = document.getElementById('slots');
-const tabsEl = document.getElementById('tabs');
 
 const STATUS_TEXT = {
-  empty: 'click to open',
-  launching: 'launching',
-  active: 'active',
-  minimized: '(minimized)',
+  empty: 'Click to start',
+  idle: 'Ready',
+  active: 'Open',
+  working: 'Working…',
+  minimized: 'Hidden',
 };
 
 // Index of the slot currently being renamed, or null. Renders skip its label so
@@ -21,21 +21,8 @@ function applyLayout(layout) {
   root.setProperty('--slot-h', `${layout.slotHeight}px`);
   root.setProperty('--gap', `${layout.gap}px`);
   root.setProperty('--margin', `${layout.margin}px`);
-  root.setProperty('--tab-h', `${layout.tabHeight}px`);
+  root.setProperty('--header-h', `${layout.headerHeight}px`);
   root.setProperty('--add-w', `${layout.addButtonWidth}px`);
-}
-
-function renderTabs(agents, selected) {
-  tabsEl.replaceChildren();
-  for (const agent of agents) {
-    const btn = document.createElement('button');
-    btn.className = 'tab' + (agent.key === selected ? ' selected' : '');
-    btn.style.setProperty('--tab-color', agent.color);
-    btn.textContent = agent.name;
-    btn.title = `Launch ${agent.name} in new slots`;
-    btn.addEventListener('click', () => window.dock.setAgent(agent.key));
-    tabsEl.append(btn);
-  }
 }
 
 function buildSlot(index) {
@@ -46,23 +33,25 @@ function buildSlot(index) {
   const controls = document.createElement('div');
   controls.className = 'slot-controls';
 
-  const close = document.createElement('button');
-  close.className = 'ctl close';
-  close.title = 'Close terminal';
-  close.addEventListener('click', (e) => {
-    e.stopPropagation();
-    window.dock.close(index);
-  });
-
   const min = document.createElement('button');
-  min.className = 'ctl min';
-  min.title = 'Minimize terminal';
+  min.className = 'ctl';
+  min.textContent = '–';
+  min.title = 'Hide this session';
   min.addEventListener('click', (e) => {
     e.stopPropagation();
     window.dock.minimize(index);
   });
 
-  controls.append(close, min);
+  const close = document.createElement('button');
+  close.className = 'ctl';
+  close.textContent = '×';
+  close.title = 'End this session';
+  close.addEventListener('click', (e) => {
+    e.stopPropagation();
+    window.dock.close(index);
+  });
+
+  controls.append(min, close);
 
   const badge = document.createElement('span');
   badge.className = 'badge';
@@ -70,20 +59,25 @@ function buildSlot(index) {
   const title = document.createElement('div');
   title.className = 'slot-title';
 
-  const status = document.createElement('div');
-  status.className = 'slot-status';
+  const sub = document.createElement('div');
+  sub.className = 'slot-sub';
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  const subText = document.createElement('span');
+  subText.className = 'sub-text';
+  sub.append(dot, subText);
 
-  slot.append(controls, badge, title, status);
+  slot.append(controls, badge, title, sub);
 
-  slot.addEventListener('click', async (e) => {
+  slot.addEventListener('click', (e) => {
     if (renamingIndex === index) return;
     if (e.altKey) {
       beginRename(index, title);
       return;
     }
+    // Shift-click re-picks the folder for an existing session.
     if (e.shiftKey) {
-      const dir = await window.dock.chooseFolder();
-      if (dir) window.dock.activateIn(index, dir);
+      window.dock.activateIn(index);
       return;
     }
     window.dock.activate(index);
@@ -146,7 +140,6 @@ function ensureSlotCount(n) {
 }
 
 function render(state) {
-  renderTabs(state.agents ?? cachedAgents, state.agent);
   ensureSlotCount(state.slots.length);
 
   const nodes = slotsEl.querySelectorAll('.slot');
@@ -157,36 +150,31 @@ function render(state) {
     node.dataset.notify = String(slot.hasNotification);
 
     const title = node.querySelector('.slot-title');
-    if (renamingIndex !== i) title.textContent = slot.label;
-    title.title = slot.cwd || slot.label;
+    if (renamingIndex !== i) {
+      title.textContent = slot.status === 'empty' ? 'New session' : slot.label;
+    }
+    node.title = slot.folder || 'Starts in your home folder — shift-click to pick another';
 
-    node.querySelector('.slot-status').textContent = STATUS_TEXT[slot.status] || '';
+    node.querySelector('.sub-text').textContent = STATUS_TEXT[slot.status] || '';
   });
 }
 
-let cachedAgents = [];
-
 async function init() {
-  const { layout, agents, state } = await window.dock.init();
-  cachedAgents = agents;
+  const { layout, state } = await window.dock.init();
   applyLayout(layout);
 
   addBtn = document.createElement('button');
   addBtn.id = 'addBtn';
   addBtn.textContent = '+';
-  addBtn.title = '⌘⌥N — new terminal';
+  addBtn.title = '⌘⌥N — new session';
   addBtn.addEventListener('click', () => window.dock.addSlot());
   slotsEl.append(addBtn);
 
-  document
-    .getElementById('minAllBtn')
-    .addEventListener('click', () => window.dock.minimizeAll());
-  document
-    .getElementById('helpBtn')
-    .addEventListener('click', () => window.dock.toggleHelp());
+  document.getElementById('minAllBtn').addEventListener('click', () => window.dock.minimizeAll());
+  document.getElementById('settingsBtn').addEventListener('click', () => window.dock.openSettings());
 
-  render({ ...state, agents });
-  window.dock.onState((next) => render({ ...next, agents: cachedAgents }));
+  render(state);
+  window.dock.onState(render);
 }
 
 init();

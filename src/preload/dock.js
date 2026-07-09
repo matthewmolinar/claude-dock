@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld('dock', {
   onState: (cb) => ipcRenderer.on('state', (_e, state) => cb(state)),
 
   activate: (index) => ipcRenderer.send('slot:activate', index),
-  activateIn: (index, cwd) => ipcRenderer.send('slot:activateIn', index, cwd),
+  activateIn: (index) => ipcRenderer.send('slot:activateIn', index),
   close: (index) => ipcRenderer.send('slot:close', index),
   minimize: (index) => ipcRenderer.send('slot:minimize', index),
   rename: (index, name) => ipcRenderer.send('slot:rename', index, name),
@@ -15,7 +15,5 @@ contextBridge.exposeInMainWorld('dock', {
   setFocusable: (focusable) => ipcRenderer.send('dock:setFocusable', focusable),
   addSlot: () => ipcRenderer.send('dock:addSlot'),
   minimizeAll: () => ipcRenderer.send('dock:minimizeAll'),
-  setAgent: (agentKey) => ipcRenderer.send('dock:setAgent', agentKey),
-  toggleHelp: () => ipcRenderer.send('dock:toggleHelp'),
-  chooseFolder: () => ipcRenderer.invoke('dock:chooseFolder'),
+  openSettings: () => ipcRenderer.send('dock:openSettings'),
 });

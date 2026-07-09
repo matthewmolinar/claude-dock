@@ -27,7 +27,7 @@ function createDockWindow(slotCount) {
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    // Non-activating: clicking the dock must not steal focus from the terminal
+    // Non-activating: clicking the dock must not steal focus from the session
     // you are about to act on. Temporarily flipped true while renaming a slot.
     focusable: false,
     show: false,
@@ -54,10 +54,10 @@ function repositionDock(win, slotCount) {
 
 let cascade = 0;
 
-function createTerminalWindow({ ptyId, slotIndex, agentKey, cwd }) {
+function createSessionWindow({ slotIndex, folder }) {
   const { workArea } = screen.getPrimaryDisplay();
-  const width = Math.min(900, workArea.width - 80);
-  const height = Math.min(600, workArea.height - 160);
+  const width = Math.min(760, workArea.width - 80);
+  const height = Math.min(680, workArea.height - 140);
 
   // Stagger new windows so a fresh one never lands exactly on the last.
   const offset = (cascade++ % 6) * 28;
@@ -66,29 +66,27 @@ function createTerminalWindow({ ptyId, slotIndex, agentKey, cwd }) {
     width,
     height,
     x: Math.round(workArea.x + (workArea.width - width) / 2) + offset,
-    y: Math.round(workArea.y + 60) + offset,
-    minWidth: 380,
-    minHeight: 240,
+    y: Math.round(workArea.y + 50) + offset,
+    minWidth: 420,
+    minHeight: 380,
     frame: false,
     roundedCorners: true,
-    backgroundColor: '#0d0d0d',
+    backgroundColor: '#1a1917',
     show: false,
-    title: 'Claude Dock',
+    title: 'Lore',
     webPreferences: {
-      preload: path.join(PRELOAD, 'terminal.js'),
+      preload: path.join(PRELOAD, 'session.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
       additionalArguments: [
-        `--cd-pty-id=${ptyId}`,
         `--cd-slot=${slotIndex}`,
-        `--cd-agent=${agentKey}`,
-        `--cd-cwd=${encodeURIComponent(cwd)}`,
+        `--cd-folder=${encodeURIComponent(folder)}`,
       ],
     },
   });
 
-  win.loadFile(path.join(RENDERER, 'terminal', 'index.html'));
+  win.loadFile(path.join(RENDERER, 'session', 'index.html'));
   win.once('ready-to-show', () => {
     win.show();
     win.focus();
@@ -97,13 +95,13 @@ function createTerminalWindow({ ptyId, slotIndex, agentKey, cwd }) {
   return win;
 }
 
-function createHelpWindow() {
+function createSettingsWindow() {
   const win = new BrowserWindow({
-    width: 300,
-    height: 300,
+    width: 440,
+    height: 330,
     frame: false,
-    transparent: true,
-    hasShadow: true,
+    roundedCorners: true,
+    backgroundColor: '#1a1917',
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -112,7 +110,7 @@ function createHelpWindow() {
     center: true,
     show: false,
     webPreferences: {
-      preload: path.join(PRELOAD, 'help.js'),
+      preload: path.join(PRELOAD, 'settings.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -120,15 +118,18 @@ function createHelpWindow() {
   });
 
   win.setAlwaysOnTop(true, 'modal-panel');
-  win.loadFile(path.join(RENDERER, 'help', 'index.html'));
-  win.once('ready-to-show', () => win.show());
+  win.loadFile(path.join(RENDERER, 'settings', 'index.html'));
+  win.once('ready-to-show', () => {
+    win.show();
+    win.focus();
+  });
   return win;
 }
 
 module.exports = {
   createDockWindow,
-  createTerminalWindow,
-  createHelpWindow,
+  createSessionWindow,
+  createSettingsWindow,
   repositionDock,
   dockFrameFor,
 };

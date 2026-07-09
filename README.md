@@ -1,24 +1,21 @@
-# Claude Dock
+# Lore
 
-A lightweight, expandable terminal dock for macOS. Manage multiple AI coding agent sessions - **Claude Code**, **Amp**, and **Codex** - each in its own built-in terminal.
+A quiet dock of AI assistants for macOS. Open one, ask it for something in plain English, and watch it work.
 
-![Claude Dock](https://img.shields.io/badge/macOS-Electron-blue)
+![Lore](https://img.shields.io/badge/macOS-Electron-blue)
 [![npm version](https://img.shields.io/npm/v/claude-dock.svg)](https://www.npmjs.com/package/claude-dock)
 
-Claude Dock is a standalone app. It has no Hammerspoon dependency, needs no
-Accessibility permission, and never drives Terminal.app over AppleScript - it
-owns the terminals it shows.
+Lore is built for people who are not programmers. There is no terminal, no
+command line, and nothing to configure beyond an API key. It has its own agent
+harness — it does not shell out to Claude Code, Amp, or Codex.
 
 ## Features
 
-- **Multi-agent support** - Claude Code, Sourcegraph Amp, and OpenAI Codex
-- **Built-in terminals** - a real PTY in a native window, not a remote-controlled Terminal.app
-- **Expandable dock** - start with 3 slots, add more with "+" or a hotkey
-- **Live slot names** - slots follow the agent's own terminal title, falling back to its session summary
-- **Visual status** - see which terminals are active or minimized
-- **Notification badges** - a pulsing dot when an agent produces output while you're elsewhere
-- **Quick access** - click to focus, ⌥-click to rename, ⇧-click to pick a folder
-- **Keyboard shortcuts** - full hotkey support
+- **Ask in plain English** — "what's in this folder?", "clean up these notes", "add butter to my grocery list"
+- **A dock of sessions** — each session is one folder, remembered between launches
+- **See what it did** — every file it reads, edits, or runs shows up as a plain-language chip you can expand
+- **Bounded** — a session can only touch its own folder. That is your home folder by default; shift-click a slot to narrow it to one project
+- **Stays out of the way** — a floating dock, a badge when work finishes while you're elsewhere
 
 ## Installation
 
@@ -26,7 +23,7 @@ owns the terminals it shows.
 npx claude-dock
 ```
 
-That's it. No permissions to grant, no system settings to change.
+Then paste an [Anthropic API key](https://console.anthropic.com/settings/keys) when Lore asks. That's the only setup.
 
 ### From source
 
@@ -39,97 +36,82 @@ npm start
 
 ## Usage
 
-### Keyboard shortcuts
+Click an empty slot and start typing. A new session works in your home folder;
+Shift-click a slot (or the folder name in its title bar) to point it somewhere
+narrower. Lore reads, edits, and creates files there, and can run commands.
 
 | Shortcut | Action |
 |----------|--------|
-| `Cmd+Option+T` | Toggle dock visibility |
-| `Cmd+Option+N` | Add new slot + launch terminal |
-| `Cmd+Option+M` | Minimize all terminals |
+| `Cmd+Option+T` | Show or hide the dock |
+| `Cmd+Option+N` | New session |
+| `Cmd+Option+M` | Hide all sessions |
 | `Cmd+Option+R` | Reload the dock |
-| `Option+Click` | Rename a slot |
-| `Shift+Click` | Open a terminal in a chosen folder |
+| `Option+Click` | Rename a session |
+| `Shift+Click` | Point a session at a different folder |
 
-Inside a terminal: `Cmd+C` / `Cmd+V` copy and paste, `Cmd+K` clears, `Cmd+A` selects all.
+In a session, `Enter` sends and `Shift+Enter` starts a new line. **Stop** interrupts
+a run mid-thought.
 
-### Slot states
+### Session states
 
-| Color | Status |
-|-------|--------|
-| Gray | Empty - click to open a terminal |
-| Green | Active terminal |
-| Blue | Minimized |
-| Red dot | Agent produced output while unfocused |
+| Dot | Meaning |
+|-----|---------|
+| Gray, dashed slot | Empty — click to start |
+| Green | Session is open |
+| Amber, pulsing | The assistant is working |
+| Blue | Hidden |
+| Orange badge | It finished while you were elsewhere |
 
-### Click actions
+## The harness
 
-- **Click empty slot** - opens a terminal in your home directory and starts the selected agent
-- **Shift+Click empty slot** - pick the folder to start in
-- **Click active slot** - focus that terminal
-- **Click minimized slot** - restore and focus it
-- **Click "+"** - add a slot and launch a terminal
-- **Option+Click a slot** - rename it inline
-- **Red / yellow dot on a slot** - close / minimize that terminal
+Lore runs its own agent loop against the Claude API — no CLI in the middle.
 
-## Configuration
+- **Model** — `claude-opus-4-8` with adaptive thinking and `effort: high`, streamed.
+- **Loop** — ask Claude, run any tools it requests, feed the results back, repeat until it stops asking. Capped at 50 round trips so a confused run can't spin forever.
+- **Tools** — `list_files`, `read_file`, `edit_file`, `write_file`, `run_command`.
+- **Scope** — a session starts in your home folder. Shift-click a slot to narrow it to one project.
+- **Confinement** — every path a tool touches is resolved and checked against the session folder. `..`, absolute paths, and symlinks that escape the folder are all rejected. Commands run with the folder as their working directory and time out after 60 seconds.
+- **Truncation** — tool output over 20,000 characters is cut, with a note saying how much was dropped.
 
-Pick the agent with the tabs in the dock's top-left. That choice, your slot
-count, and any slot names persist across restarts in
-`~/Library/Application Support/claude-dock/state.json`.
+Nothing is sent anywhere except Anthropic.
 
-Supported agents:
+## Where your API key lives
 
-- `claude` - [Claude Code](https://claude.ai/code) (default)
-- `amp` - [Sourcegraph Amp](https://ampcode.com/)
-- `codex` - [OpenAI Codex](https://openai.com/codex/)
+`~/Library/Application Support/claude-dock/credentials.json`, owner-read-only (`0600`).
 
-Each terminal runs your login shell (`$SHELL -l`), so the agent resolves through
-your normal `PATH` and your usual shell config applies.
+Lore deliberately does **not** use Electron's `safeStorage` / macOS Keychain. Because
+the app runs on an unsigned Electron binary, the Keychain does not recognise it and
+macOS prompts for "Electron Safe Storage" access on every launch — an unacceptable
+first-run experience, and one denial silently breaks the app. A `0600` file in your
+own home directory is the same protection the Anthropic SDK, the `ant` CLI, and
+Claude Code give their credentials.
 
-Layout constants (slot size, gaps, margins) live in `src/shared/layout.js`.
-
-## How slot names are chosen
-
-In priority order:
-
-1. A name you set with ⌥-click
-2. The terminal title the agent sets (e.g. `✳ Claude Code`)
-3. The most recent session summary from `~/.claude/projects/<project>/sessions-index.json`
-4. The working directory's name
-5. `Claude 2`, `Codex 3`, …
-
-## Positioning
-
-The dock centers itself along the bottom of your primary display's *work area*,
-which already excludes the menu bar and the macOS Dock on whichever edge it
-lives. Earlier versions shipped hotkeys to move the system Dock out of the way;
-that workaround is no longer needed and has been removed.
+If a file in your home directory is not good enough for your threat model, don't
+put a production key in it.
 
 ## Development
 
 ```bash
 npm start        # run the app
 npm run dev      # run in the foreground with logs
-npm test         # unit tests for the pure logic
+npm test         # unit + agent-loop tests (no network, no API key)
 ```
 
-`electron` is a runtime dependency rather than a devDependency, so that
-`npx claude-dock` can launch it. That is also why there is no `.dmg` build:
-electron-builder refuses to package an app whose `dependencies` include
-electron, and the npx install path is the one this project ships.
+The agent tests stand up a local HTTP server that speaks Anthropic's SSE wire
+format, so the whole tool loop is exercised without a key or a network call.
 
 Architecture:
 
-- `src/main/` - Electron main process: PTY lifecycle, windows, IPC, hotkeys
-- `src/preload/` - context-isolated bridges; renderers get no Node access
-- `src/renderer/dock/` - the dock UI
-- `src/renderer/terminal/` - xterm.js terminal + custom title bar
-- `src/shared/` - pure logic (layout math, title parsing, state store), unit tested
+- `src/main/harness/` — the agent loop (`agent.js`) and its tools (`tools.js`)
+- `src/main/` — windows, session state, the key store, IPC
+- `src/preload/` — context-isolated bridges; renderers get no Node access
+- `src/renderer/dock|session|settings/` — the three windows
+- `src/shared/` — pure logic (layout math, labels, persisted state), unit tested
+
+`electron` is a runtime dependency rather than a devDependency, so that
+`npx claude-dock` can launch it. That is also why there is no `.dmg` build:
+electron-builder refuses to package an app whose `dependencies` include electron.
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
-## Contributing
-
-Contributions welcome! Please open an issue or PR. This project uses [conventional commits](https://www.conventionalcommits.org/) - releases are published automatically when PRs merge to `main`.

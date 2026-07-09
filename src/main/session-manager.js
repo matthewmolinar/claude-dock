@@ -1,50 +1,38 @@
 'use strict';
 
 const os = require('os');
+const path = require('path');
 const { EventEmitter } = require('events');
-const pty = require('@lydell/node-pty');
 
-const { getAgent } = require('../shared/agents');
-const { generateSlotName } = require('../shared/title');
-const { getRecentSessionSummary } = require('../shared/sessions');
-
-// Pause the PTY when this much data is in flight to the renderer. xterm.js
-// parses on the main thread, so an unthrottled `yes` would pin the UI.
-const HIGH_WATER_MARK = 256 * 1024;
-const LOW_WATER_MARK = 64 * 1024;
-
-let nextPtyId = 1;
+const { Agent } = require('./harness/agent');
+const { slotLabel } = require('../shared/title');
 
 class SessionManager extends EventEmitter {
-  constructor({ store, createTerminalWindow }) {
+  constructor({ store, keyStore, createSessionWindow }) {
     super();
     this.store = store;
-    this.createTerminalWindow = createTerminalWindow;
+    this.keyStore = keyStore;
+    this.createSessionWindow = createSessionWindow;
 
     const persisted = store.get();
-    this.agentKey = persisted.agent;
     this.slots = [];
     for (let i = 0; i < persisted.slotCount; i++) {
       const saved = persisted.slots[i] || {};
-      this.slots.push(this._blankSlot(saved.customName ?? null, saved.cwd ?? null));
+      this.slots.push(this._blankSlot(saved.customName ?? null, saved.folder ?? null));
     }
-    this._summaryCache = new Map();
   }
 
-  _blankSlot(customName = null, cwd = null) {
+  _blankSlot(customName = null, folder = null) {
     return {
       customName,
-      cwd,
-      title: null,
-      pty: null,
-      ptyId: null,
+      folder,
+      firstPrompt: null,
+      agent: null,
       win: null,
+      // Everything the session window needs to re-render after a reload.
+      transcript: [],
+      busy: false,
       hasNotification: false,
-      launching: false,
-      ready: false,
-      pending: [],
-      inFlight: 0,
-      paused: false,
     };
   }
 
@@ -52,13 +40,10 @@ class SessionManager extends EventEmitter {
     return this.slots.length;
   }
 
-  // ---- persistence -------------------------------------------------------
-
   persist() {
     this.store.set({
-      agent: this.agentKey,
       slotCount: this.slots.length,
-      slots: this.slots.map((s) => ({ customName: s.customName, cwd: s.cwd })),
+      slots: this.slots.map((s) => ({ customName: s.customName, folder: s.folder })),
     });
   }
 
@@ -68,56 +53,28 @@ class SessionManager extends EventEmitter {
     return slot.win && !slot.win.isDestroyed() ? slot.win : null;
   }
 
-  _sessionSummary(slot) {
-    if (!slot.cwd) return null;
-    const key = `${this.agentKey}:${slot.cwd}`;
-    const hit = this._summaryCache.get(key);
-    if (hit && Date.now() - hit.at < 5000) return hit.value;
-    let value = null;
-    try {
-      value = getRecentSessionSummary(slot.cwd, this.agentKey);
-    } catch {
-      value = null;
-    }
-    this._summaryCache.set(key, { at: Date.now(), value });
-    return value;
-  }
-
   slotStatus(slot) {
     const win = this._liveWindow(slot);
-    if (win) return win.isMinimized() ? 'minimized' : 'active';
-    if (slot.launching) return 'launching';
-    return 'empty';
-  }
-
-  slotLabel(slot, index) {
-    const status = this.slotStatus(slot);
-    if (status === 'empty') return slot.customName || 'Empty';
-    if (status === 'launching') return slot.customName || 'Opening...';
-    return generateSlotName({
-      customName: slot.customName,
-      title: slot.title,
-      cwd: slot.cwd,
-      sessionSummary: this._sessionSummary(slot),
-      agentKey: this.agentKey,
-      index: index + 1,
-    });
+    if (!win) return slot.folder ? 'idle' : 'empty';
+    if (slot.busy) return 'working';
+    return win.isMinimized() ? 'minimized' : 'active';
   }
 
   snapshot() {
     return {
-      agent: this.agentKey,
-      slots: this.slots.map((slot, i) => {
-        const status = this.slotStatus(slot);
-        return {
-          index: i,
-          label: this.slotLabel(slot, i),
-          status,
-          hasWindow: Boolean(this._liveWindow(slot)),
-          hasNotification: slot.hasNotification,
-          cwd: slot.cwd,
-        };
-      }),
+      slots: this.slots.map((slot, i) => ({
+        index: i,
+        label: slotLabel({
+          customName: slot.customName,
+          firstPrompt: slot.firstPrompt,
+          folder: slot.folder,
+          index: i + 1,
+        }),
+        status: this.slotStatus(slot),
+        hasWindow: Boolean(this._liveWindow(slot)),
+        hasNotification: slot.hasNotification,
+        folder: slot.folder,
+      })),
     };
   }
 
@@ -125,14 +82,17 @@ class SessionManager extends EventEmitter {
     this.emit('changed', this.snapshot());
   }
 
-  // ---- slot lifecycle ----------------------------------------------------
-
-  setAgent(agentKey) {
-    if (this.agentKey === agentKey) return;
-    this.agentKey = getAgent(agentKey).key;
-    this.persist();
-    this._changed();
+  _pushWindow(slot, channel, payload) {
+    const win = this._liveWindow(slot);
+    if (win) win.webContents.send(channel, payload);
   }
+
+  /** Tell every open session window about something, e.g. the key changing. */
+  broadcast(channel, payload) {
+    for (const slot of this.slots) this._pushWindow(slot, channel, payload);
+  }
+
+  // ---- slot lifecycle ----------------------------------------------------
 
   addSlot() {
     if (this.slots.length >= 12) return null;
@@ -150,15 +110,26 @@ class SessionManager extends EventEmitter {
     this._changed();
   }
 
-  /** Click on a slot: focus an existing terminal, or launch a new one. */
-  activate(index, { cwd } = {}) {
+  /** Focus an existing window, or open one for this slot. */
+  activate(index, { folder } = {}) {
     const slot = this.slots[index];
     if (!slot) return;
 
     slot.hasNotification = false;
 
     const win = this._liveWindow(slot);
-    if (win) {
+
+    // Pointing an open session at a new folder means a new agent and a new
+    // transcript — the old agent's tools are bound to the old root.
+    if (win && folder && folder !== slot.folder) {
+      if (slot.agent) slot.agent.abort();
+      slot.agent = null;
+      slot.transcript = [];
+      slot.firstPrompt = null;
+      slot.busy = false;
+      win.destroy();
+      slot.win = null;
+    } else if (win) {
       if (win.isMinimized()) win.restore();
       win.show();
       win.focus();
@@ -166,91 +137,19 @@ class SessionManager extends EventEmitter {
       return;
     }
 
-    if (slot.launching) return;
-    this.launch(index, cwd || slot.cwd || os.homedir());
+    // A session starts in the user's home folder unless they point it somewhere
+    // else. Nobody should have to answer a file-picker before saying hello.
+    if (folder) slot.folder = folder;
+    if (!slot.folder) slot.folder = os.homedir();
+
+    slot.win = this.createSessionWindow({ slotIndex: index, folder: slot.folder });
+    this._wireWindow(index, slot);
+    this.persist();
+    this._changed();
   }
 
-  launch(index, cwd) {
-    const slot = this.slots[index];
-    if (!slot || slot.launching || this._liveWindow(slot)) return;
-
-    const agent = getAgent(this.agentKey);
-    slot.launching = true;
-    slot.cwd = cwd;
-    slot.title = null;
-    slot.ready = false;
-    slot.pending = [];
-    slot.inFlight = 0;
-    slot.paused = false;
-    this._changed();
-
-    const ptyId = nextPtyId++;
-    slot.ptyId = ptyId;
-
-    const shell = process.env.SHELL || '/bin/zsh';
-    const env = { ...process.env };
-    // Electron injects these; a child shell must not inherit them.
-    delete env.ELECTRON_RUN_AS_NODE;
-    delete env.ELECTRON_NO_ATTACH_CONSOLE;
-    env.TERM = 'xterm-256color';
-    env.COLORTERM = 'truecolor';
-    env.TERM_PROGRAM = 'claude-dock';
-
-    let child;
-    try {
-      // A *login* shell is what puts `claude`/`amp`/`codex` on PATH: an app
-      // bundle launched from Finder inherits only a stub PATH, so we let the
-      // user's own zprofile/zshrc populate the environment, then type the
-      // command in. It also leaves a usable shell behind when the agent exits.
-      child = pty.spawn(shell, ['-l'], {
-        name: 'xterm-256color',
-        cols: 80,
-        rows: 24,
-        cwd,
-        env,
-      });
-    } catch (err) {
-      slot.launching = false;
-      slot.ptyId = null;
-      this.emit('error', err);
-      this._changed();
-      return;
-    }
-
-    slot.pty = child;
-
-    let typedCommand = false;
-    child.onData((data) => {
-      // Type the agent command once the login shell has drawn its first prompt.
-      if (!typedCommand) {
-        typedCommand = true;
-        setTimeout(() => {
-          try {
-            child.write(`${agent.command}\r`);
-          } catch {
-            /* pty already gone */
-          }
-        }, 60);
-      }
-      this._onPtyData(slot, data);
-    });
-
-    child.onExit(() => {
-      slot.pty = null;
-      const win = this._liveWindow(slot);
-      if (win) win.destroy();
-      this._resetSlotRuntime(slot);
-      this._changed();
-    });
-
-    const win = this.createTerminalWindow({
-      ptyId,
-      slotIndex: index,
-      agentKey: this.agentKey,
-      cwd,
-    });
-    slot.win = win;
-
+  _wireWindow(index, slot) {
+    const win = slot.win;
     win.on('focus', () => {
       slot.hasNotification = false;
       this._changed();
@@ -259,123 +158,126 @@ class SessionManager extends EventEmitter {
     win.on('restore', () => this._changed());
     win.on('closed', () => {
       slot.win = null;
-      this._killPty(slot);
-      this._resetSlotRuntime(slot);
+      if (slot.agent) slot.agent.abort();
+      slot.busy = false;
       this._changed();
     });
-
-    slot.launching = false;
-    this._changed();
   }
 
-  _resetSlotRuntime(slot) {
-    slot.pty = null;
-    slot.ptyId = null;
-    slot.title = null;
-    slot.launching = false;
-    slot.ready = false;
-    slot.pending = [];
-    slot.inFlight = 0;
-    slot.paused = false;
-    slot.hasNotification = false;
+  /** Everything the session renderer needs on load, including past messages. */
+  sessionState(index) {
+    const slot = this.slots[index];
+    if (!slot) return null;
+    return {
+      index,
+      folder: slot.folder,
+      busy: slot.busy,
+      transcript: slot.transcript,
+      hasKey: this.keyStore.has(),
+    };
   }
 
-  _killPty(slot) {
-    if (!slot.pty) return;
+  // ---- the agent ---------------------------------------------------------
+
+  _ensureAgent(slot) {
+    if (slot.agent) return slot.agent;
+
+    const apiKey = this.keyStore.get();
+    if (!apiKey) throw new Error('NO_API_KEY');
+
+    slot.agent = new Agent({
+      apiKey,
+      root: slot.folder,
+      folderName:
+        slot.folder === os.homedir() ? 'your home folder' : path.basename(slot.folder),
+    });
+    return slot.agent;
+  }
+
+  async prompt(index, text) {
+    const slot = this.slots[index];
+    if (!slot || slot.busy || !text.trim()) return;
+
+    let agent;
     try {
-      slot.pty.kill();
-    } catch {
-      /* already exited */
-    }
-    slot.pty = null;
-  }
-
-  // ---- PTY <-> renderer plumbing -----------------------------------------
-
-  _onPtyData(slot, data) {
-    const win = this._liveWindow(slot);
-
-    // Output while the window is not focused means the agent did something
-    // while the user was elsewhere. That is exactly the badge condition.
-    if (win && !win.isFocused() && !slot.hasNotification) {
-      slot.hasNotification = true;
-      this._changed();
-    }
-
-    if (!slot.ready) {
-      slot.pending.push(data);
+      agent = this._ensureAgent(slot);
+    } catch (err) {
+      const message =
+        err.message === 'NO_API_KEY'
+          ? 'Add your Anthropic API key in Settings to get started.'
+          : err.message;
+      this._appendTranscript(slot, { role: 'error', text: message });
       return;
     }
 
-    slot.inFlight += data.length;
-    if (!slot.paused && slot.inFlight > HIGH_WATER_MARK) {
-      slot.paused = true;
-      try {
-        slot.pty.pause();
-      } catch {
-        /* noop */
-      }
+    if (!slot.firstPrompt) {
+      slot.firstPrompt = text;
+      this.persist();
     }
-    if (win) win.webContents.send('term:data', data);
-  }
 
-  /** Renderer finished writing `bytes` into xterm; release backpressure. */
-  ack(ptyId, bytes) {
-    const slot = this.slots.find((s) => s.ptyId === ptyId);
-    if (!slot) return;
-    slot.inFlight = Math.max(0, slot.inFlight - bytes);
-    if (slot.paused && slot.inFlight < LOW_WATER_MARK) {
-      slot.paused = false;
-      try {
-        slot.pty.resume();
-      } catch {
-        /* noop */
-      }
-    }
-  }
-
-  markReady(ptyId) {
-    const slot = this.slots.find((s) => s.ptyId === ptyId);
-    if (!slot) return;
-    slot.ready = true;
-    const win = this._liveWindow(slot);
-    if (win && slot.pending.length) {
-      for (const chunk of slot.pending) win.webContents.send('term:data', chunk);
-    }
-    slot.pending = [];
-  }
-
-  write(ptyId, data) {
-    const slot = this.slots.find((s) => s.ptyId === ptyId);
-    if (slot && slot.pty) {
-      try {
-        slot.pty.write(data);
-      } catch {
-        /* pty gone */
-      }
-    }
-  }
-
-  resize(ptyId, cols, rows) {
-    const slot = this.slots.find((s) => s.ptyId === ptyId);
-    if (slot && slot.pty && cols > 0 && rows > 0) {
-      try {
-        slot.pty.resize(cols, rows);
-      } catch {
-        /* pty gone */
-      }
-    }
-  }
-
-  setTitle(ptyId, title) {
-    const slot = this.slots.find((s) => s.ptyId === ptyId);
-    if (!slot || slot.title === title) return;
-    slot.title = title;
+    slot.busy = true;
+    this._appendTranscript(slot, { role: 'user', text });
     this._changed();
+
+    // One assistant bubble per turn; deltas append into it.
+    const bubble = { role: 'assistant', text: '', tools: [] };
+    slot.transcript.push(bubble);
+    this._pushWindow(slot, 'session:assistant-start', {});
+
+    const onText = (delta) => {
+      bubble.text += delta;
+      this._pushWindow(slot, 'session:text', delta);
+    };
+    const onTool = (call) => {
+      bubble.tools.push({ id: call.id, label: call.label, input: call.input, output: null });
+      this._pushWindow(slot, 'session:tool', { id: call.id, label: call.label });
+    };
+    const onToolResult = ({ id, ok, output }) => {
+      const entry = bubble.tools.find((t) => t.id === id);
+      if (entry) {
+        entry.output = output;
+        entry.ok = ok;
+      }
+      this._pushWindow(slot, 'session:tool-result', { id, ok, output });
+    };
+
+    agent.on('text', onText);
+    agent.on('tool', onTool);
+    agent.on('tool_result', onToolResult);
+
+    const finish = () => {
+      agent.off('text', onText);
+      agent.off('tool', onTool);
+      agent.off('tool_result', onToolResult);
+      slot.busy = false;
+      this._notifyIfAway(slot);
+      this._pushWindow(slot, 'session:done', {});
+      this._changed();
+    };
+
+    agent.once('error', ({ message }) => {
+      this._appendTranscript(slot, { role: 'error', text: message });
+      finish();
+    });
+    agent.once('done', finish);
+
+    await agent.send(text);
   }
 
-  slotByPtyId(ptyId) {
-    return this.slots.find((s) => s.ptyId === ptyId) || null;
+  stop(index) {
+    const slot = this.slots[index];
+    if (slot && slot.agent) slot.agent.abort();
+  }
+
+  _appendTranscript(slot, entry) {
+    slot.transcript.push(entry);
+    this._pushWindow(slot, 'session:entry', entry);
+  }
+
+  /** The agent finished while the user was looking elsewhere: badge the slot. */
+  _notifyIfAway(slot) {
+    const win = this._liveWindow(slot);
+    if (win && !win.isFocused()) slot.hasNotification = true;
   }
 
   // ---- bulk actions ------------------------------------------------------
@@ -384,11 +286,9 @@ class SessionManager extends EventEmitter {
     const slot = this.slots[index];
     if (!slot) return false;
     const win = this._liveWindow(slot);
-    this._killPty(slot);
+    if (slot.agent) slot.agent.abort();
     if (win) win.destroy();
-    slot.win = null;
-    slot.customName = null;
-    this._resetSlotRuntime(slot);
+    this.slots[index] = this._blankSlot();
     this.persist();
     this._changed();
     return true;
@@ -418,11 +318,11 @@ class SessionManager extends EventEmitter {
 
   disposeAll() {
     for (const slot of this.slots) {
-      this._killPty(slot);
+      if (slot.agent) slot.agent.abort();
       const win = this._liveWindow(slot);
       if (win) win.destroy();
     }
   }
 }
 
-module.exports = { SessionManager, HIGH_WATER_MARK, LOW_WATER_MARK };
+module.exports = { SessionManager };
