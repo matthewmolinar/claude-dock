@@ -23,6 +23,11 @@ npm run dev    # foreground + logs
 npm test       # unit tests (node:test)
 ```
 
+`electron` sits in `dependencies` (not `devDependencies`) so `npx claude-dock`
+can launch it. Consequence: electron-builder cannot package this app, so there
+is no `.dmg` target. Do not "fix" this by moving electron to devDependencies -
+that breaks the npx install path.
+
 ## Gotchas
 - The preload exposes `window.term`, so a top-level `const term` in the terminal
   renderer is a redeclaration SyntaxError. The xterm instance is named `xterm`.

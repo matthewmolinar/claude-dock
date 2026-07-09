@@ -111,8 +111,12 @@ that workaround is no longer needed and has been removed.
 npm start        # run the app
 npm run dev      # run in the foreground with logs
 npm test         # unit tests for the pure logic
-npm run dist     # build an unsigned .app / .dmg
 ```
+
+`electron` is a runtime dependency rather than a devDependency, so that
+`npx claude-dock` can launch it. That is also why there is no `.dmg` build:
+electron-builder refuses to package an app whose `dependencies` include
+electron, and the npx install path is the one this project ships.
 
 Architecture:
 

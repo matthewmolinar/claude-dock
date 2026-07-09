@@ -11,8 +11,7 @@
     "vendor": "node scripts/vendor.js",
     "start": "electron .",
     "dev": "electron . --dev",
-    "test": "node --test \"test/*.test.js\"",
-    "dist": "electron-builder --mac --publish never"
+    "test": "node --test \"test/*.test.js\""
   },
   "keywords": [
     "claude",
@@ -54,25 +53,5 @@
     "@xterm/xterm": "6.0.0",
     "electron": "43.1.0"
   },
-  "devDependencies": {
-    "electron-builder": "26.15.3"
-  },
-  "build": {
-    "appId": "com.matthewmolinar.claude-dock",
-    "productName": "Claude Dock",
-    "files": [
-      "src/**/*",
-      "node_modules/**/*"
-    ],
-    "mac": {
-      "category": "public.app-category.developer-tools",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": ["arm64", "x64"]
-        }
-      ],
-      "identity": null
-    }
-  }
+  "//": "electron is a runtime dependency, not a devDependency, because `npx claude-dock` must be able to launch it. That rules out electron-builder, which refuses to package an app with electron in dependencies. Packaging as a .dmg would mean moving electron to devDependencies and giving up the npx install path."
 }
