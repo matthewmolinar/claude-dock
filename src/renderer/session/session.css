@@ -283,24 +283,36 @@ body.blurred .light {
 #empty {
   height: 100%;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
   padding: 0 40px 60px;
-  text-align: center;
+  pointer-events: none;
 }
 
-#empty h1 {
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+#mascot {
+  width: 108px;
+  height: auto;
 }
 
-#empty p {
-  font-size: 14px;
-  color: var(--ink-faint);
-  max-width: 380px;
+#mascot .body,
+#mascot .ear {
+  fill: #ffffff;
+}
+
+/* A slow breath, so the window feels alive but never busy. */
+#mascot {
+  animation: mascot-breathe 5s ease-in-out infinite;
+  transform-origin: 50% 70%;
+}
+
+@keyframes mascot-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.025);
+  }
 }
 
 body.has-messages #empty {
@@ -429,7 +441,8 @@ body.has-messages #empty {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spinner {
+  .spinner,
+  #mascot {
     animation: none !important;
   }
   #thread {

@@ -206,11 +206,6 @@ async function init() {
   folderBtn.title = `${folder} — click to open in Finder`;
   document.title = `Lore — ${pretty}`;
 
-  document.getElementById('emptySub').textContent =
-    pretty === '~'
-      ? 'I can look through your files, change them, and run things for you.'
-      : `I can look through ${pretty}, change files, and run things for you.`;
-
   // Replay anything that happened before this window was opened or reloaded.
   for (const entry of (state && state.transcript) || []) {
     if (entry.role === 'assistant') {
