@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;"
+    />
+    <link rel="stylesheet" href="vendor/xterm.css" />
+    <link rel="stylesheet" href="terminal.css" />
+    <title>Claude Dock Terminal</title>
+  </head>
+  <body>
+    <header id="titlebar">
+      <div class="lights">
+        <button id="close" class="light close" aria-label="Close"></button>
+        <button id="min" class="light min" aria-label="Minimize"></button>
+        <button id="zoom" class="light zoom" aria-label="Zoom"></button>
+      </div>
+      <div id="title">Terminal</div>
+    </header>
+    <div id="terminal"></div>
+
+    <script src="vendor/xterm.js"></script>
+    <script src="vendor/addon-fit.js"></script>
+    <script src="vendor/addon-webgl.js"></script>
+    <script src="vendor/addon-web-links.js"></script>
+    <script src="terminal.js"></script>
+  </body>
+</html>

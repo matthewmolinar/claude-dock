@@ -1,0 +1,123 @@
+:root {
+  --titlebar-h: 34px;
+  --bg: #0d0d0d;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- custom title bar (frameless window) ---- */
+
+#titlebar {
+  height: var(--titlebar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: #161616;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  /* Everything in the bar drags the window except the buttons below. */
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.lights {
+  display: flex;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.light {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  cursor: default;
+  position: relative;
+}
+
+.light.close {
+  background: #ff5f57;
+}
+.light.min {
+  background: #febc2e;
+}
+.light.zoom {
+  background: #28c840;
+}
+
+/* Dim the lights when the window is in the background, like AppKit does. */
+body.blurred .light {
+  background: #4a4a4a;
+}
+
+.lights:hover .light::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+#title {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(235, 235, 235, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Balance the 3 lights (44px) so the title is optically centered. */
+  padding-right: 44px;
+}
+
+body.blurred #title {
+  color: rgba(235, 235, 235, 0.4);
+}
+
+/* ---- terminal ---- */
+
+#terminal {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 4px 4px 10px;
+  overflow: hidden;
+}
+
+.xterm .xterm-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
