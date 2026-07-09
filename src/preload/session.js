@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('session', {
   onToolResult: (cb) => ipcRenderer.on('session:tool-result', (_e, r) => cb(r)),
   onEntry: (cb) => ipcRenderer.on('session:entry', (_e, entry) => cb(entry)),
   onDone: (cb) => ipcRenderer.on('session:done', () => cb()),
+  onKeyState: (cb) => ipcRenderer.on('session:key-state', (_e, s) => cb(s)),
 
   minimizeWindow: () => ipcRenderer.send('win:minimize'),
   closeWindow: () => ipcRenderer.send('win:close'),

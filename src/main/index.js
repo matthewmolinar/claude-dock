@@ -162,6 +162,15 @@ function registerIpc() {
 
   ipcMain.handle('settings:init', () => ({ hasKey: keyStore.has() }));
 
+  /**
+   * A key change has to reach two places: agents built with the old key are
+   * discarded, and every open session window updates its "add a key" banner.
+   */
+  function onKeyChanged() {
+    for (const slot of sessions.slots) slot.agent = null;
+    sessions.broadcast('session:key-state', { hasKey: keyStore.has() });
+  }
+
   ipcMain.handle('settings:saveKey', (_e, key) => {
     if (typeof key !== 'string') return { ok: false };
     try {
@@ -169,14 +178,13 @@ function registerIpc() {
     } catch (err) {
       return { ok: false, message: err.message };
     }
-    // A new key must reach sessions that already failed without one.
-    for (const slot of sessions.slots) slot.agent = null;
+    onKeyChanged();
     return { ok: true, hasKey: keyStore.has() };
   });
 
   ipcMain.handle('settings:clearKey', () => {
     keyStore.clear();
-    for (const slot of sessions.slots) slot.agent = null;
+    onKeyChanged();
     return { ok: true, hasKey: false };
   });
 

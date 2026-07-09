@@ -191,6 +191,9 @@ api.onEntry((entry) => {
   addMessage(entry.role, entry.text);
 });
 api.onDone(() => setBusy(false));
+api.onKeyState(({ hasKey }) => {
+  needsKey.hidden = hasKey;
+});
 
 // ---- boot ------------------------------------------------------------------
 

@@ -87,6 +87,11 @@ class SessionManager extends EventEmitter {
     if (win) win.webContents.send(channel, payload);
   }
 
+  /** Tell every open session window about something, e.g. the key changing. */
+  broadcast(channel, payload) {
+    for (const slot of this.slots) this._pushWindow(slot, channel, payload);
+  }
+
   // ---- slot lifecycle ----------------------------------------------------
 
   addSlot() {
