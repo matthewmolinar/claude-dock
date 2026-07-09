@@ -1,6 +1,6 @@
 # Lore
 
-A quiet dock of AI assistants for macOS. Point one at a folder, ask it for something in plain English, and watch it work.
+A quiet dock of AI assistants for macOS. Open one, ask it for something in plain English, and watch it work.
 
 ![Lore](https://img.shields.io/badge/macOS-Electron-blue)
 [![npm version](https://img.shields.io/npm/v/claude-dock.svg)](https://www.npmjs.com/package/claude-dock)
@@ -14,7 +14,7 @@ harness — it does not shell out to Claude Code, Amp, or Codex.
 - **Ask in plain English** — "what's in this folder?", "clean up these notes", "add butter to my grocery list"
 - **A dock of sessions** — each session is one folder, remembered between launches
 - **See what it did** — every file it reads, edits, or runs shows up as a plain-language chip you can expand
-- **Nothing hidden** — the assistant can only touch the folder you picked
+- **Bounded** — a session can only touch its own folder. That is your home folder by default; shift-click a slot to narrow it to one project
 - **Stays out of the way** — a floating dock, a badge when work finishes while you're elsewhere
 
 ## Installation
