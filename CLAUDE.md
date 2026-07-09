@@ -17,6 +17,13 @@ cp init.lua ~/.hammerspoon/init.lua && hs -c "hs.reload()"
 hs -c "runTests()"
 ```
 
+## Commits
+This repo uses [conventional commits](https://www.conventionalcommits.org/) and semantic-release for automated versioning.
+- `fix:` → patch release
+- `feat:` → minor release
+- `feat!:` / `BREAKING CHANGE:` → major release
+- `docs:`, `chore:`, `ci:`, `test:`, `refactor:` → no release
+
 ## Hotkeys
 - `⌘⌥T` - Toggle dock
 - `⌘⌥N` - New terminal

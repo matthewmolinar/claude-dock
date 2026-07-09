@@ -131,4 +131,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-Contributions welcome! Please open an issue or PR.
+Contributions welcome! Please open an issue or PR. This project uses [conventional commits](https://www.conventionalcommits.org/) — releases are published automatically when PRs merge to `main`.
