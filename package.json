@@ -2,8 +2,17 @@
   "name": "claude-dock",
   "version": "1.4.0",
   "description": "A lightweight terminal dock for macOS to manage AI coding agent sessions - Claude Code, Amp, and Codex",
+  "main": "src/main/index.js",
   "bin": {
     "claude-dock": "bin/cli.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/vendor.js",
+    "vendor": "node scripts/vendor.js",
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node --test \"test/*.test.js\"",
+    "dist": "electron-builder --mac --publish never"
   },
   "keywords": [
     "claude",
@@ -13,7 +22,7 @@
     "openai",
     "sourcegraph",
     "ai-coding",
-    "hammerspoon",
+    "electron",
     "macos",
     "terminal",
     "dock",
@@ -27,13 +36,43 @@
   },
   "homepage": "https://github.com/matthewmolinar/claude-dock",
   "engines": {
-    "node": ">=14"
+    "node": ">=18"
   },
   "os": [
     "darwin"
   ],
   "files": [
     "bin/",
-    "init.lua"
-  ]
+    "src/",
+    "scripts/"
+  ],
+  "dependencies": {
+    "@lydell/node-pty": "1.2.0-beta.12",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-web-links": "0.12.0",
+    "@xterm/addon-webgl": "0.19.0",
+    "@xterm/xterm": "6.0.0",
+    "electron": "43.1.0"
+  },
+  "devDependencies": {
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.matthewmolinar.claude-dock",
+    "productName": "Claude Dock",
+    "files": [
+      "src/**/*",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "identity": null
+    }
+  }
 }
