@@ -36,8 +36,9 @@ npm start
 
 ## Usage
 
-Click an empty slot, choose a folder, and type what you want. Lore reads, edits,
-and creates files in that folder, and can run commands there.
+Click an empty slot and start typing. A new session works in your home folder;
+Shift-click a slot (or the folder name in its title bar) to point it somewhere
+narrower. Lore reads, edits, and creates files there, and can run commands.
 
 | Shortcut | Action |
 |----------|--------|
@@ -55,7 +56,7 @@ a run mid-thought.
 
 | Dot | Meaning |
 |-----|---------|
-| Gray, dashed slot | Empty — click to choose a folder |
+| Gray, dashed slot | Empty — click to start |
 | Green | Session is open |
 | Amber, pulsing | The assistant is working |
 | Blue | Hidden |
@@ -68,6 +69,7 @@ Lore runs its own agent loop against the Claude API — no CLI in the middle.
 - **Model** — `claude-opus-4-8` with adaptive thinking and `effort: high`, streamed.
 - **Loop** — ask Claude, run any tools it requests, feed the results back, repeat until it stops asking. Capped at 50 round trips so a confused run can't spin forever.
 - **Tools** — `list_files`, `read_file`, `edit_file`, `write_file`, `run_command`.
+- **Scope** — a session starts in your home folder. Shift-click a slot to narrow it to one project.
 - **Confinement** — every path a tool touches is resolved and checked against the session folder. `..`, absolute paths, and symlinks that escape the folder are all rejected. Commands run with the folder as their working directory and time out after 60 seconds.
 - **Truncation** — tool output over 20,000 characters is cut, with a note saying how much was dropped.
 

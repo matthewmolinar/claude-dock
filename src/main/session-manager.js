@@ -1,5 +1,6 @@
 'use strict';
 
+const os = require('os');
 const path = require('path');
 const { EventEmitter } = require('events');
 
@@ -112,7 +113,18 @@ class SessionManager extends EventEmitter {
     slot.hasNotification = false;
 
     const win = this._liveWindow(slot);
-    if (win) {
+
+    // Pointing an open session at a new folder means a new agent and a new
+    // transcript — the old agent's tools are bound to the old root.
+    if (win && folder && folder !== slot.folder) {
+      if (slot.agent) slot.agent.abort();
+      slot.agent = null;
+      slot.transcript = [];
+      slot.firstPrompt = null;
+      slot.busy = false;
+      win.destroy();
+      slot.win = null;
+    } else if (win) {
       if (win.isMinimized()) win.restore();
       win.show();
       win.focus();
@@ -120,8 +132,10 @@ class SessionManager extends EventEmitter {
       return;
     }
 
+    // A session starts in the user's home folder unless they point it somewhere
+    // else. Nobody should have to answer a file-picker before saying hello.
     if (folder) slot.folder = folder;
-    if (!slot.folder) return; // caller must pick a folder first
+    if (!slot.folder) slot.folder = os.homedir();
 
     slot.win = this.createSessionWindow({ slotIndex: index, folder: slot.folder });
     this._wireWindow(index, slot);
@@ -169,7 +183,8 @@ class SessionManager extends EventEmitter {
     slot.agent = new Agent({
       apiKey,
       root: slot.folder,
-      folderName: path.basename(slot.folder),
+      folderName:
+        slot.folder === os.homedir() ? 'your home folder' : path.basename(slot.folder),
     });
     return slot.agent;
   }

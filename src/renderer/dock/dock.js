@@ -3,7 +3,7 @@
 const slotsEl = document.getElementById('slots');
 
 const STATUS_TEXT = {
-  empty: 'Choose a folder',
+  empty: 'Click to start',
   idle: 'Ready',
   active: 'Open',
   working: 'Working…',
@@ -153,7 +153,7 @@ function render(state) {
     if (renamingIndex !== i) {
       title.textContent = slot.status === 'empty' ? 'New session' : slot.label;
     }
-    node.title = slot.folder || 'Click to choose a folder';
+    node.title = slot.folder || 'Starts in your home folder — shift-click to pick another';
 
     node.querySelector('.sub-text').textContent = STATUS_TEXT[slot.status] || '';
   });

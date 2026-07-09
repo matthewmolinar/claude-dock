@@ -64,13 +64,14 @@ async function chooseFolder() {
   return res.canceled ? null : res.filePaths[0];
 }
 
-/** Open a slot, asking for a folder first if it does not have one. */
+/**
+ * Open a slot. A new session starts in the home folder — no picker. `reselect`
+ * (shift-click, or the folder button) is the only path that asks.
+ */
 async function openSlot(index, { reselect = false } = {}) {
-  const slot = sessions.slots[index];
-  if (!slot) return;
+  if (!sessions.slots[index]) return;
 
-  const needsFolder = reselect || (!slot.folder && !slot.win);
-  if (needsFolder) {
+  if (reselect) {
     const folder = await chooseFolder();
     if (!folder) return;
     sessions.activate(index, { folder });

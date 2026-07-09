@@ -201,8 +201,15 @@ function prettyFolder(folder) {
 async function init() {
   const state = await api.init();
   const folder = (state && state.folder) || api.folder;
-  folderBtn.textContent = prettyFolder(folder);
-  document.title = `Lore — ${prettyFolder(folder)}`;
+  const pretty = prettyFolder(folder);
+  folderBtn.textContent = pretty;
+  folderBtn.title = `${folder} — click to open in Finder`;
+  document.title = `Lore — ${pretty}`;
+
+  document.getElementById('emptySub').textContent =
+    pretty === '~'
+      ? 'I can look through your files, change them, and run things for you.'
+      : `I can look through ${pretty}, change files, and run things for you.`;
 
   // Replay anything that happened before this window was opened or reloaded.
   for (const entry of (state && state.transcript) || []) {
