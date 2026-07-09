@@ -1,13 +1,16 @@
 :root {
   --titlebar-h: 40px;
-  --ink: #1c1b19;
-  --ink-soft: #5f5c56;
-  --ink-faint: #9a968f;
-  --bg: #fdfcfa;
-  --line: rgba(28, 27, 25, 0.08);
-  --bubble: #f4f2ee;
-  --accent: #c15f3c;
-  --danger: #b4432c;
+  --ink: #edeae5;
+  --ink-soft: #a5a099;
+  --ink-faint: #6f6b65;
+  --bg: #1a1917;
+  --panel: #232120;
+  --panel-hover: #2a2827;
+  --bubble: #2c2a27;
+  --line: rgba(255, 255, 255, 0.09);
+  --accent: #d97757;
+  --danger: #e77a63;
+  --ok: #4caf6d;
   --max-read: 620px;
 }
 
@@ -85,7 +88,7 @@ body {
 }
 
 body.blurred .light {
-  background: #d8d5d0;
+  background: #454240;
 }
 
 #folder {
@@ -108,7 +111,7 @@ body.blurred .light {
 }
 
 #folder:hover {
-  background: rgba(28, 27, 25, 0.05);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--ink-soft);
 }
 
@@ -127,7 +130,7 @@ body.blurred .light {
   width: 9px;
 }
 #thread::-webkit-scrollbar-thumb {
-  background: rgba(28, 27, 25, 0.14);
+  background: rgba(255, 255, 255, 0.13);
   border-radius: 5px;
   border: 3px solid var(--bg);
 }
@@ -162,7 +165,7 @@ body.blurred .light {
 
 .msg.error {
   color: var(--danger);
-  background: rgba(180, 67, 44, 0.06);
+  background: rgba(231, 122, 99, 0.09);
   border-radius: 10px;
   padding: 10px 14px;
   font-size: 13.5px;
@@ -180,7 +183,7 @@ body.blurred .light {
 
 .chip {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--panel);
   border-radius: 9px;
   font-family: inherit;
   font-size: 12.5px;
@@ -196,14 +199,14 @@ body.blurred .light {
 }
 
 .chip:hover {
-  background: #faf9f7;
+  background: var(--panel-hover);
 }
 
 .chip .spinner {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  border: 1.5px solid rgba(28, 27, 25, 0.18);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
   border-top-color: var(--accent);
   flex: none;
   animation: spin 0.7s linear infinite;
@@ -211,7 +214,7 @@ body.blurred .light {
 
 .chip[data-state="done"] .spinner {
   border: none;
-  background: #3fae5a;
+  background: var(--ok);
   width: 6px;
   height: 6px;
   animation: none;
@@ -241,7 +244,7 @@ body.blurred .light {
   font-size: 11.5px;
   line-height: 1.5;
   color: var(--ink-soft);
-  background: #f7f5f2;
+  background: #1f1e1c;
   border: 1px solid var(--line);
   border-radius: 9px;
   padding: 10px 12px;
@@ -270,7 +273,7 @@ body.blurred .light {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 1.5px solid rgba(28, 27, 25, 0.15);
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
   border-top-color: var(--accent);
   animation: spin 0.7s linear infinite;
 }
@@ -311,7 +314,7 @@ body.has-messages #empty {
   margin: 0 24px 10px;
   padding: 14px 16px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--panel);
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -324,18 +327,18 @@ body.has-messages #empty {
 #needsKey button {
   border: 0;
   background: var(--ink);
-  color: #fff;
+  color: var(--bg);
   border-radius: 8px;
   padding: 7px 13px;
   font-family: inherit;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: default;
   flex: none;
 }
 
 #needsKey button:hover {
-  background: #35322e;
+  background: #fff;
 }
 
 /* ---- composer ---- */
@@ -356,7 +359,7 @@ body.has-messages #empty {
   resize: none;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: #fff;
+  background: var(--panel);
   padding: 11px 14px;
   font-family: inherit;
   font-size: 14.5px;
@@ -364,13 +367,13 @@ body.has-messages #empty {
   color: var(--ink);
   max-height: 160px;
   overflow-y: auto;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-  transition: border-color 120ms ease;
+  transition: border-color 120ms ease, background 120ms ease;
 }
 
 #input:focus {
   outline: none;
-  border-color: rgba(193, 95, 60, 0.55);
+  border-color: rgba(217, 119, 87, 0.6);
+  background: var(--panel-hover);
 }
 
 #input::placeholder {
@@ -378,7 +381,7 @@ body.has-messages #empty {
 }
 
 #input:disabled {
-  background: #f7f5f2;
+  background: #1f1e1c;
   color: var(--ink-faint);
 }
 
@@ -389,8 +392,9 @@ body.has-messages #empty {
   border: 0;
   border-radius: 50%;
   background: var(--ink);
-  color: #fff;
+  color: var(--bg);
   font-size: 15px;
+  font-weight: 600;
   line-height: 1;
   font-family: inherit;
   cursor: default;
@@ -398,11 +402,12 @@ body.has-messages #empty {
 }
 
 #send:disabled {
-  opacity: 0.28;
+  opacity: 0.22;
 }
 
 #send:not(:disabled):hover {
   background: var(--accent);
+  color: #fff;
 }
 
 #stop {
@@ -411,7 +416,7 @@ body.has-messages #empty {
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: #fff;
+  background: var(--panel);
   color: var(--ink-soft);
   font-family: inherit;
   font-size: 13px;
@@ -420,7 +425,7 @@ body.has-messages #empty {
 
 #stop:hover {
   color: var(--danger);
-  border-color: rgba(180, 67, 44, 0.35);
+  border-color: rgba(231, 122, 99, 0.4);
 }
 
 @media (prefers-reduced-motion: reduce) {

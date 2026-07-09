@@ -1,12 +1,13 @@
 :root {
-  --ink: #1c1b19;
-  --ink-soft: #5f5c56;
-  --ink-faint: #9a968f;
-  --bg: #fdfcfa;
-  --line: rgba(28, 27, 25, 0.1);
-  --accent: #c15f3c;
-  --ok: #2f7d43;
-  --danger: #b4432c;
+  --ink: #edeae5;
+  --ink-soft: #a5a099;
+  --ink-faint: #6f6b65;
+  --bg: #1a1917;
+  --panel: #232120;
+  --line: rgba(255, 255, 255, 0.1);
+  --accent: #d97757;
+  --ok: #4caf6d;
+  --danger: #e77a63;
 }
 
 * {
@@ -86,7 +87,7 @@ label {
 input {
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #fff;
+  background: var(--panel);
   padding: 10px 12px;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 13px;
@@ -94,9 +95,13 @@ input {
   user-select: text;
 }
 
+input::placeholder {
+  color: var(--ink-faint);
+}
+
 input:focus {
   outline: none;
-  border-color: rgba(193, 95, 60, 0.55);
+  border-color: rgba(217, 119, 87, 0.6);
 }
 
 .status {
@@ -134,17 +139,18 @@ button {
 .primary {
   border: 0;
   background: var(--ink);
-  color: #fff;
+  color: var(--bg);
   padding: 9px 18px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .primary:disabled {
-  opacity: 0.3;
+  opacity: 0.25;
 }
 
 .primary:not(:disabled):hover {
   background: var(--accent);
+  color: #fff;
 }
 
 .ghost {
@@ -156,7 +162,7 @@ button {
 
 .ghost:hover {
   color: var(--danger);
-  border-color: rgba(180, 67, 44, 0.35);
+  border-color: rgba(231, 122, 99, 0.4);
 }
 
 .link {

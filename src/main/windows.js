@@ -71,7 +71,7 @@ function createSessionWindow({ slotIndex, folder }) {
     minHeight: 380,
     frame: false,
     roundedCorners: true,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#1a1917',
     show: false,
     title: 'Lore',
     webPreferences: {
@@ -101,7 +101,7 @@ function createSettingsWindow() {
     height: 330,
     frame: false,
     roundedCorners: true,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#1a1917',
     resizable: false,
     minimizable: false,
     maximizable: false,

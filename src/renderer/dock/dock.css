@@ -6,23 +6,30 @@
   --header-h: 26px;
   --add-w: 44px;
 
-  --ink: #1c1b19;
-  --ink-soft: #6b6862;
-  --ink-faint: #9a968f;
-  --surface: rgba(252, 251, 249, 0.92);
-  --card: #f2f0ec;
-  --card-hover: #eceae5;
-  --line: rgba(28, 27, 25, 0.09);
+  --ink: #edeae5;
+  --ink-soft: #a5a099;
+  --ink-faint: #6f6b65;
+  --surface: rgba(30, 29, 27, 0.94);
+  --card: #292725;
+  --card-hover: #322f2c;
+  --card-raised: #35322e;
+  --line: rgba(255, 255, 255, 0.09);
 
-  --accent: #c15f3c;
-  --working: #d98b28;
-  --idle: #b9b5ae;
+  --accent: #d97757;
+  --working: #e0a13c;
+  --active: #4caf6d;
+  --hidden-dot: #6f93c4;
+  --idle: #5c5852;
 }
 
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 html,
@@ -44,7 +51,7 @@ body {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 16px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
   display: flex;
   flex-direction: column;
 }
@@ -55,15 +62,7 @@ body {
   height: var(--header-h);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-}
-
-#wordmark {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink-soft);
-  padding-left: 2px;
+  justify-content: flex-end;
 }
 
 #actions {
@@ -85,7 +84,7 @@ body {
 }
 
 .ghost:hover {
-  background: rgba(28, 27, 25, 0.05);
+  background: rgba(255, 255, 255, 0.07);
   color: var(--ink);
 }
 
@@ -125,18 +124,17 @@ body {
 
 .slot[data-status="active"],
 .slot[data-status="working"] {
-  background: #fff;
+  background: var(--card-raised);
   border-color: var(--line);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .slot[data-status="empty"] {
   background: transparent;
-  border: 1px dashed rgba(28, 27, 25, 0.16);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
 }
 
 .slot[data-status="empty"]:hover {
-  background: rgba(28, 27, 25, 0.03);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .slot-title {
@@ -186,7 +184,7 @@ body {
 }
 
 .slot[data-status="active"] .dot {
-  background: #3fae5a;
+  background: var(--active);
 }
 
 .slot[data-status="working"] .dot {
@@ -195,7 +193,7 @@ body {
 }
 
 .slot[data-status="minimized"] .dot {
-  background: #7aa7d9;
+  background: var(--hidden-dot);
 }
 
 .slot[data-status="empty"] .dot {
@@ -208,7 +206,7 @@ body {
     opacity: 1;
   }
   50% {
-    opacity: 0.35;
+    opacity: 0.3;
   }
 }
 
@@ -245,7 +243,7 @@ body {
 }
 
 .ctl:hover {
-  background: rgba(28, 27, 25, 0.08);
+  background: rgba(255, 255, 255, 0.1);
   color: var(--ink);
 }
 
@@ -258,7 +256,7 @@ body {
   height: 9px;
   border-radius: 50%;
   background: var(--accent);
-  border: 2px solid #fcfbf9;
+  border: 2px solid #1e1d1b;
   opacity: 0;
   pointer-events: none;
   transition: opacity 160ms ease;
@@ -274,7 +272,7 @@ body {
   width: var(--add-w);
   height: var(--slot-h);
   flex: none;
-  border: 1px dashed rgba(28, 27, 25, 0.16);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
   border-radius: 12px;
   background: transparent;
   color: var(--ink-faint);
@@ -287,7 +285,7 @@ body {
 }
 
 #addBtn:hover {
-  background: rgba(28, 27, 25, 0.04);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--ink);
 }
 
