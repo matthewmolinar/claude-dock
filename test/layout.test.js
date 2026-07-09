@@ -13,7 +13,7 @@ test('getDockWidth scales with slotCount', () => {
 
 test('getDockHeight is constant regardless of slotCount', () => {
   assert.strictEqual(getDockHeight(), getDockHeight());
-  assert.strictEqual(getDockHeight(), LAYOUT.tabHeight + LAYOUT.slotHeight + LAYOUT.margin * 2);
+  assert.strictEqual(getDockHeight(), LAYOUT.headerHeight + LAYOUT.slotHeight + LAYOUT.margin * 2);
 });
 
 test('computeDockFrame returns x, y, width, height', () => {

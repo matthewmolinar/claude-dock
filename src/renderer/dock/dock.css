@@ -1,23 +1,22 @@
 :root {
-  --slot-w: 140px;
-  --slot-h: 60px;
+  --slot-w: 150px;
+  --slot-h: 62px;
   --gap: 8px;
-  --margin: 10px;
-  --tab-h: 28px;
-  --add-w: 40px;
+  --margin: 12px;
+  --header-h: 26px;
+  --add-w: 44px;
 
-  --dock-bg: rgba(20, 20, 20, 0.95);
-  --dock-border: rgba(255, 255, 255, 0.1);
-  --slot-empty: rgb(38, 38, 38);
-  --slot-active: rgb(26, 51, 26);
-  --slot-minimized: rgb(31, 31, 46);
-  --slot-border: rgba(255, 255, 255, 0.15);
-  --text-primary: rgb(230, 230, 230);
-  --text-secondary: rgb(128, 128, 128);
-  --badge: rgb(255, 77, 77);
-  --btn-close: rgb(255, 97, 87);
-  --btn-min: rgb(255, 204, 0);
-  --btn-inactive: rgba(77, 77, 77, 0.6);
+  --ink: #1c1b19;
+  --ink-soft: #6b6862;
+  --ink-faint: #9a968f;
+  --surface: rgba(252, 251, 249, 0.92);
+  --card: #f2f0ec;
+  --card-hover: #eceae5;
+  --line: rgba(28, 27, 25, 0.09);
+
+  --accent: #c15f3c;
+  --working: #d98b28;
+  --idle: #b9b5ae;
 }
 
 * {
@@ -35,80 +34,59 @@ body {
   -webkit-font-smoothing: antialiased;
   cursor: default;
   user-select: none;
+  color: var(--ink);
 }
 
 #dock {
   height: 100%;
   padding: var(--margin);
-  padding-top: 0;
-  background: var(--dock-bg);
-  border: 1px solid var(--dock-border);
-  border-radius: 14px;
+  padding-top: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.14);
   display: flex;
   flex-direction: column;
 }
 
-/* ---- top bar: agent tabs + utility buttons ---- */
+/* ---- header ---- */
 
 #topbar {
-  height: var(--tab-h);
+  height: var(--header-h);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 6px;
 }
 
-#tabs,
-#utils {
+#wordmark {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+  padding-left: 2px;
+}
+
+#actions {
   display: flex;
-  gap: 4px;
+  gap: 2px;
 }
 
-.tab,
-.util {
-  height: 20px;
+.ghost {
   border: 0;
+  background: transparent;
   border-radius: 6px;
+  padding: 4px 8px;
   font-family: inherit;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
+  color: var(--ink-faint);
   cursor: default;
-  background: rgb(38, 38, 38);
-  color: rgb(128, 128, 128);
   transition: background 120ms ease, color 120ms ease;
 }
 
-.tab {
-  width: 60px;
-  font-size: 12px;
-}
-
-.tab:hover:not(.selected) {
-  background: rgb(52, 52, 52);
-  color: rgb(180, 180, 180);
-}
-
-.tab.selected {
-  background: var(--tab-color);
-  color: #fff;
-}
-
-.util {
-  padding: 0 10px;
-}
-
-.util.help {
-  background: rgb(51, 46, 31);
-  color: rgb(230, 204, 128);
-}
-
-.util.min-all {
-  background: rgb(46, 46, 64);
-  color: rgb(153, 153, 230);
-}
-
-.util:hover {
-  filter: brightness(1.35);
+.ghost:hover {
+  background: rgba(28, 27, 25, 0.05);
+  color: var(--ink);
 }
 
 /* ---- slots ---- */
@@ -117,156 +95,177 @@ body {
   display: flex;
   gap: var(--gap);
   align-items: center;
-  padding-top: var(--margin);
+  padding-top: 6px;
 }
 
 .slot {
   position: relative;
   width: var(--slot-w);
   height: var(--slot-h);
-  border-radius: 10px;
-  border: 1px solid var(--slot-border);
-  background: var(--slot-empty);
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: var(--card);
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  gap: 2px;
-  /* Not `hidden`: the badge glow deliberately bleeds past the corner. The
-     title clips itself via max-width + text-overflow. */
+  gap: 3px;
+  padding: 0 12px;
   overflow: visible;
-  transition: background 140ms ease, transform 90ms ease;
+  transition: background 140ms ease, transform 90ms ease, border-color 140ms ease;
 }
 
 .slot:hover {
-  filter: brightness(1.18);
+  background: var(--card-hover);
 }
 
 .slot:active {
-  transform: scale(0.98);
+  transform: scale(0.985);
 }
 
-.slot[data-status="active"] {
-  background: var(--slot-active);
+.slot[data-status="active"],
+.slot[data-status="working"] {
+  background: #fff;
+  border-color: var(--line);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-.slot[data-status="minimized"] {
-  background: var(--slot-minimized);
+.slot[data-status="empty"] {
+  background: transparent;
+  border: 1px dashed rgba(28, 27, 25, 0.16);
+}
+
+.slot[data-status="empty"]:hover {
+  background: rgba(28, 27, 25, 0.03);
 }
 
 .slot-title {
-  max-width: calc(var(--slot-w) - 16px);
-  padding: 0 2px;
-  font-size: 13px;
-  color: var(--text-primary);
-  text-align: center;
+  max-width: 100%;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* The inline rename field: the dock is normally non-activating, so main flips
-   focusability while this input is alive. */
+.slot[data-status="empty"] .slot-title {
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+/* Inline rename: the dock is normally non-activating, so main flips
+   focusability while this field is alive. */
 .slot-title[contenteditable="true"] {
   user-select: text;
   cursor: text;
-  outline: 1px solid rgba(120, 170, 255, 0.9);
+  outline: 1.5px solid var(--accent);
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.35);
+  padding: 0 2px;
+  margin: 0 -2px;
 }
 
-.slot-status {
-  font-size: 10px;
-  color: var(--text-secondary);
+.slot-sub {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
-/* macOS-style window controls, top-left of each slot */
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--idle);
+}
+
+.slot[data-status="active"] .dot {
+  background: #3fae5a;
+}
+
+.slot[data-status="working"] .dot {
+  background: var(--working);
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
+.slot[data-status="minimized"] .dot {
+  background: #7aa7d9;
+}
+
+.slot[data-status="empty"] .dot {
+  display: none;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* controls, revealed on hover */
 .slot-controls {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 6px;
+  right: 6px;
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.slot:hover .slot-controls {
+  opacity: 1;
+}
+
+.slot[data-has-window="false"] .slot-controls {
+  display: none;
 }
 
 .ctl {
-  width: 10px;
-  height: 10px;
+  width: 18px;
+  height: 18px;
   border: 0;
-  border-radius: 50%;
+  border-radius: 5px;
   padding: 0;
-  background: var(--btn-inactive);
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1;
   cursor: default;
 }
 
-.slot[data-has-window="true"] .ctl.close {
-  background: var(--btn-close);
-}
-
-.slot[data-has-window="true"] .ctl.min {
-  background: var(--btn-min);
-}
-
 .ctl:hover {
-  filter: brightness(1.2);
+  background: rgba(28, 27, 25, 0.08);
+  color: var(--ink);
 }
 
-/* Notification badge, top-right corner */
+/* Notification dot: the agent finished while you were away. */
 .badge {
   position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 12px;
-  height: 12px;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: var(--badge);
+  background: var(--accent);
+  border: 2px solid #fcfbf9;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 140ms ease;
-}
-
-.badge::before,
-.badge::after {
-  content: "";
-  position: absolute;
-  border-radius: 50%;
-  background: var(--badge);
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-}
-
-.badge::before {
-  width: 18px;
-  height: 18px;
-  opacity: 0.4;
-}
-
-.badge::after {
-  width: 24px;
-  height: 24px;
-  opacity: 0.2;
+  transition: opacity 160ms ease;
 }
 
 .slot[data-notify="true"] .badge {
   opacity: 1;
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.18);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .slot[data-notify="true"] .badge {
-    animation: none;
-  }
 }
 
 /* ---- add button ---- */
@@ -275,21 +274,29 @@ body {
   width: var(--add-w);
   height: var(--slot-h);
   flex: none;
-  border: 0;
-  border-radius: 10px;
-  background: rgb(242, 242, 242);
-  color: rgb(77, 77, 77);
-  font-size: 28px;
+  border: 1px dashed rgba(28, 27, 25, 0.16);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: 20px;
+  font-weight: 300;
   line-height: 1;
   font-family: inherit;
   cursor: default;
-  transition: transform 90ms ease, background 120ms ease;
+  transition: transform 90ms ease, background 120ms ease, color 120ms ease;
 }
 
 #addBtn:hover {
-  background: #fff;
+  background: rgba(28, 27, 25, 0.04);
+  color: var(--ink);
 }
 
 #addBtn:active {
   transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot[data-status="working"] .dot {
+    animation: none;
+  }
 }

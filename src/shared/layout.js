@@ -4,13 +4,13 @@
 // dock renderer (CSS custom properties). Keep these two in sync via IPC rather
 // than duplicating literals.
 const LAYOUT = {
-  slotWidth: 140,
-  slotHeight: 60,
+  slotWidth: 150,
+  slotHeight: 62,
   gap: 8,
-  margin: 10,
-  bottomOffset: 5,
-  addButtonWidth: 40,
-  tabHeight: 28,
+  margin: 12,
+  bottomOffset: 8,
+  addButtonWidth: 44,
+  headerHeight: 26,
   initialSlots: 3,
 };
 
@@ -26,7 +26,7 @@ function getDockWidth(slotCount, layout = LAYOUT) {
 }
 
 function getDockHeight(layout = LAYOUT) {
-  return layout.tabHeight + layout.slotHeight + layout.margin * 2;
+  return layout.headerHeight + layout.slotHeight + layout.margin * 2;
 }
 
 /**

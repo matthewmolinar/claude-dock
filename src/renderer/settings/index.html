@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; script-src 'self';"
+    />
+    <link rel="stylesheet" href="settings.css" />
+    <title>Lore Settings</title>
+  </head>
+  <body>
+    <header id="titlebar">
+      <button id="close" class="light close" aria-label="Close"></button>
+    </header>
+
+    <main>
+      <h1>Connect Lore</h1>
+      <p class="lede">
+        Lore uses Claude. Paste an Anthropic API key to get started. It stays on this
+        Mac and is only ever sent to Anthropic.
+      </p>
+
+      <label for="key">Anthropic API key</label>
+      <input id="key" type="password" placeholder="sk-ant-…" spellcheck="false" />
+
+      <p id="status" class="status"></p>
+
+      <div class="actions">
+        <button id="getKey" class="link">Get a key</button>
+        <span class="spacer"></span>
+        <button id="clear" class="ghost" hidden>Remove key</button>
+        <button id="save" class="primary" disabled>Save</button>
+      </div>
+    </main>
+
+    <script src="settings.js"></script>
+  </body>
+</html>

@@ -2,11 +2,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { DEFAULT_AGENT, AGENTS } = require('./agents');
 const { LAYOUT } = require('./layout');
 
 const DEFAULT_STATE = {
-  agent: DEFAULT_AGENT,
   slotCount: LAYOUT.initialSlots,
   slots: [],
 };
@@ -15,8 +13,6 @@ function sanitize(raw) {
   const state = { ...DEFAULT_STATE };
   if (!raw || typeof raw !== 'object') return state;
 
-  if (typeof raw.agent === 'string' && AGENTS[raw.agent]) state.agent = raw.agent;
-
   if (Number.isInteger(raw.slotCount)) {
     state.slotCount = Math.min(Math.max(raw.slotCount, 1), 12);
   }
@@ -24,7 +20,7 @@ function sanitize(raw) {
   if (Array.isArray(raw.slots)) {
     state.slots = raw.slots.slice(0, state.slotCount).map((s) => ({
       customName: typeof s?.customName === 'string' ? s.customName : null,
-      cwd: typeof s?.cwd === 'string' ? s.cwd : null,
+      folder: typeof s?.folder === 'string' ? s.folder : null,
     }));
   }
   return state;

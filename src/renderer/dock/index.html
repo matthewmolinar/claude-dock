@@ -7,17 +7,17 @@
       content="default-src 'none'; style-src 'self'; script-src 'self';"
     />
     <link rel="stylesheet" href="dock.css" />
-    <title>Claude Dock</title>
+    <title>Lore</title>
   </head>
   <body>
     <div id="dock">
-      <div id="topbar">
-        <div id="tabs"></div>
-        <div id="utils">
-          <button id="helpBtn" class="util help" title="Shortcuts">Help</button>
-          <button id="minAllBtn" class="util min-all" title="⌘⌥M">Minimize all</button>
+      <header id="topbar">
+        <span id="wordmark">Lore</span>
+        <div id="actions">
+          <button id="settingsBtn" class="ghost" title="Settings">Settings</button>
+          <button id="minAllBtn" class="ghost" title="⌘⌥M">Hide all</button>
         </div>
-      </div>
+      </header>
       <div id="slots"></div>
     </div>
     <script src="dock.js"></script>
