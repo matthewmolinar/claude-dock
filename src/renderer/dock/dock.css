@@ -1,0 +1,295 @@
+:root {
+  --slot-w: 140px;
+  --slot-h: 60px;
+  --gap: 8px;
+  --margin: 10px;
+  --tab-h: 28px;
+  --add-w: 40px;
+
+  --dock-bg: rgba(20, 20, 20, 0.95);
+  --dock-border: rgba(255, 255, 255, 0.1);
+  --slot-empty: rgb(38, 38, 38);
+  --slot-active: rgb(26, 51, 26);
+  --slot-minimized: rgb(31, 31, 46);
+  --slot-border: rgba(255, 255, 255, 0.15);
+  --text-primary: rgb(230, 230, 230);
+  --text-secondary: rgb(128, 128, 128);
+  --badge: rgb(255, 77, 77);
+  --btn-close: rgb(255, 97, 87);
+  --btn-min: rgb(255, 204, 0);
+  --btn-inactive: rgba(77, 77, 77, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  cursor: default;
+  user-select: none;
+}
+
+#dock {
+  height: 100%;
+  padding: var(--margin);
+  padding-top: 0;
+  background: var(--dock-bg);
+  border: 1px solid var(--dock-border);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- top bar: agent tabs + utility buttons ---- */
+
+#topbar {
+  height: var(--tab-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 6px;
+}
+
+#tabs,
+#utils {
+  display: flex;
+  gap: 4px;
+}
+
+.tab,
+.util {
+  height: 20px;
+  border: 0;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: default;
+  background: rgb(38, 38, 38);
+  color: rgb(128, 128, 128);
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.tab {
+  width: 60px;
+  font-size: 12px;
+}
+
+.tab:hover:not(.selected) {
+  background: rgb(52, 52, 52);
+  color: rgb(180, 180, 180);
+}
+
+.tab.selected {
+  background: var(--tab-color);
+  color: #fff;
+}
+
+.util {
+  padding: 0 10px;
+}
+
+.util.help {
+  background: rgb(51, 46, 31);
+  color: rgb(230, 204, 128);
+}
+
+.util.min-all {
+  background: rgb(46, 46, 64);
+  color: rgb(153, 153, 230);
+}
+
+.util:hover {
+  filter: brightness(1.35);
+}
+
+/* ---- slots ---- */
+
+#slots {
+  display: flex;
+  gap: var(--gap);
+  align-items: center;
+  padding-top: var(--margin);
+}
+
+.slot {
+  position: relative;
+  width: var(--slot-w);
+  height: var(--slot-h);
+  border-radius: 10px;
+  border: 1px solid var(--slot-border);
+  background: var(--slot-empty);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  /* Not `hidden`: the badge glow deliberately bleeds past the corner. The
+     title clips itself via max-width + text-overflow. */
+  overflow: visible;
+  transition: background 140ms ease, transform 90ms ease;
+}
+
+.slot:hover {
+  filter: brightness(1.18);
+}
+
+.slot:active {
+  transform: scale(0.98);
+}
+
+.slot[data-status="active"] {
+  background: var(--slot-active);
+}
+
+.slot[data-status="minimized"] {
+  background: var(--slot-minimized);
+}
+
+.slot-title {
+  max-width: calc(var(--slot-w) - 16px);
+  padding: 0 2px;
+  font-size: 13px;
+  color: var(--text-primary);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The inline rename field: the dock is normally non-activating, so main flips
+   focusability while this input is alive. */
+.slot-title[contenteditable="true"] {
+  user-select: text;
+  cursor: text;
+  outline: 1px solid rgba(120, 170, 255, 0.9);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.slot-status {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* macOS-style window controls, top-left of each slot */
+.slot-controls {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 4px;
+}
+
+.ctl {
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: var(--btn-inactive);
+  cursor: default;
+}
+
+.slot[data-has-window="true"] .ctl.close {
+  background: var(--btn-close);
+}
+
+.slot[data-has-window="true"] .ctl.min {
+  background: var(--btn-min);
+}
+
+.ctl:hover {
+  filter: brightness(1.2);
+}
+
+/* Notification badge, top-right corner */
+.badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--badge);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.badge::before,
+.badge::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  background: var(--badge);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.badge::before {
+  width: 18px;
+  height: 18px;
+  opacity: 0.4;
+}
+
+.badge::after {
+  width: 24px;
+  height: 24px;
+  opacity: 0.2;
+}
+
+.slot[data-notify="true"] .badge {
+  opacity: 1;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot[data-notify="true"] .badge {
+    animation: none;
+  }
+}
+
+/* ---- add button ---- */
+
+#addBtn {
+  width: var(--add-w);
+  height: var(--slot-h);
+  flex: none;
+  border: 0;
+  border-radius: 10px;
+  background: rgb(242, 242, 242);
+  color: rgb(77, 77, 77);
+  font-size: 28px;
+  line-height: 1;
+  font-family: inherit;
+  cursor: default;
+  transition: transform 90ms ease, background 120ms ease;
+}
+
+#addBtn:hover {
+  background: #fff;
+}
+
+#addBtn:active {
+  transform: scale(0.96);
+}

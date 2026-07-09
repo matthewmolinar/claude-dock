@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; script-src 'self';"
+    />
+    <link rel="stylesheet" href="dock.css" />
+    <title>Claude Dock</title>
+  </head>
+  <body>
+    <div id="dock">
+      <div id="topbar">
+        <div id="tabs"></div>
+        <div id="utils">
+          <button id="helpBtn" class="util help" title="Shortcuts">Help</button>
+          <button id="minAllBtn" class="util min-all" title="⌘⌥M">Minimize all</button>
+        </div>
+      </div>
+      <div id="slots"></div>
+    </div>
+    <script src="dock.js"></script>
+  </body>
+</html>
