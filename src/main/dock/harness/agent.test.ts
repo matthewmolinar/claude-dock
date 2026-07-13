@@ -195,7 +195,14 @@ test('agent requests adaptive thinking, high effort, and declares its tools', as
     assert.equal(req.stream, true)
 
     const names = req.tools.map((t) => t.name).sort()
-    assert.deepEqual(names, ['edit_file', 'list_files', 'read_file', 'run_command', 'write_file'])
+    assert.deepEqual(names, [
+      'edit_file',
+      'list_files',
+      'read_file',
+      'run_command',
+      'show_artifact',
+      'write_file',
+    ])
     // The system prompt must never leak the folder's absolute path.
     assert.ok(!req.system.includes('/private/'), 'system prompt leaks an absolute path')
   })
@@ -258,5 +265,61 @@ test('agent turns an auth failure into advice, not a stack trace', async () => {
     await agent.send('hello')
     assert.equal(errors.length, 1)
     assert.match(errors[0], /API key was not accepted/)
+  })
+})
+
+/** Turn 1: call show_artifact on an existing file. Turn 2: end. */
+function showArtifactThenEnd(calls: RecordedRequest[]): http.Server {
+  return http.createServer((req, res) => {
+    let body = ''
+    req.on('data', (c) => (body += c))
+    req.on('end', () => {
+      calls.push(JSON.parse(body) as RecordedRequest)
+      if (calls.length === 1) {
+        sse(res, [
+          ['message_start', messageStart],
+          ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_a', name: 'show_artifact', input: {} } }],
+          ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"path":"dash.html","title":"Team dashboard"}' } }],
+          ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+          ['message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 9 } }],
+          ['message_stop', { type: 'message_stop' }],
+        ])
+        return
+      }
+      sse(res, [
+        ['message_start', messageStart],
+        ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
+        ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Here is your dashboard.' } }],
+        ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+        ['message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 5 } }],
+        ['message_stop', { type: 'message_stop' }],
+      ])
+    })
+  })
+}
+
+test('show_artifact round-trips through the tool loop', async () => {
+  await withAgent(showArtifactThenEnd, async ({ agent, root, calls }) => {
+    fs.writeFileSync(path.join(root, 'dash.html'), '<h1>dash</h1>')
+
+    const tools: AgentToolEvent[] = []
+    const results: AgentToolResultEvent[] = []
+    agent.on('tool', (t: AgentToolEvent) => tools.push(t))
+    agent.on('tool_result', (r: AgentToolResultEvent) => results.push(r))
+    await new Promise<void>((resolve, reject) => {
+      agent.once('done', () => resolve())
+      agent.once('error', (e: { message: string }) => reject(new Error(e.message)))
+      void agent.send('show me the dashboard')
+    })
+
+    assert.equal(tools[0].label, 'Showed Team dashboard')
+    assert.equal(results[0].ok, true)
+    assert.match(results[0].output, /Artifact pane/)
+    // The second request must carry the tool_result back.
+    const toolResult = (calls[1].messages.at(-1)!.content as Array<Record<string, unknown>>)[0]
+    assert.equal(toolResult.type, 'tool_result')
+    assert.equal(toolResult.is_error, false)
+    // The tool is offered to the model.
+    assert.ok(calls[0].tools.some((t) => t.name === 'show_artifact'))
   })
 })

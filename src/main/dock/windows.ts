@@ -12,7 +12,14 @@ import { fileURLToPath } from 'node:url'
 
 import { BrowserWindow, screen } from 'electron'
 
-import { computeDockFrame, type DockFrame } from '../../shared/dock'
+import { computeDockFrame, expandedSessionWidth, type DockFrame } from '../../shared/dock'
+
+/**
+ * Session windows live in their own persistent session partition so the
+ * network can be blocked and the artifact:// scheme served there without
+ * touching the host app's default session.
+ */
+export const DOCK_SESSION_PARTITION = 'persist:dock-session'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 /** electron-vite serves the renderers here in dev; file:// loads in prod. */
@@ -102,6 +109,7 @@ export function createSessionWindow({ slotIndex, folder }: { slotIndex: number; 
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      partition: DOCK_SESSION_PARTITION,
       additionalArguments: [`--cd-slot=${slotIndex}`, `--cd-folder=${encodeURIComponent(folder)}`],
     },
   })
@@ -112,7 +120,48 @@ export function createSessionWindow({ slotIndex, folder }: { slotIndex: number; 
     win.focus()
   })
 
+  // Surface warnings/errors from the renderer AND anything framed inside it
+  // (artifact pages). Without this, a crashed artifact script is invisible.
+  win.webContents.on('console-message', (event) => {
+    if (event.level === 'error' || event.level === 'warning') {
+      console.log(`[dock session ${slotIndex} console] ${event.message} (${event.sourceId ?? ''})`)
+    }
+  })
+
   return win
+}
+
+interface ArtifactResizeState {
+  chatWidth: number | null
+  chatX: number | null
+}
+
+const resizeState = new WeakMap<BrowserWindow, ArtifactResizeState>()
+
+/**
+ * Widen a session window for the artifact pane, or give the space back.
+ * Remembers the chat-only width per window so close restores it.
+ */
+export function resizeForArtifact(win: BrowserWindow | null, open: boolean): void {
+  if (!win || win.isDestroyed()) return
+  const { workArea } = screen.getPrimaryDisplay()
+  const bounds = win.getBounds()
+  const state = resizeState.get(win) ?? { chatWidth: null, chatX: null }
+
+  if (open) {
+    if (state.chatWidth == null) {
+      state.chatWidth = bounds.width
+      state.chatX = bounds.x
+      resizeState.set(win, state)
+    }
+    const width = expandedSessionWidth(state.chatWidth, workArea.width)
+    win.setBounds({ ...bounds, x: Math.max(workArea.x, bounds.x - (width - bounds.width)), width })
+  } else if (state.chatWidth != null) {
+    const width = state.chatWidth
+    const x = Math.max(workArea.x, Math.min(state.chatX ?? bounds.x, workArea.x + workArea.width - width))
+    win.setBounds({ ...bounds, x, width })
+    resizeState.delete(win)
+  }
 }
 
 export function createSettingsWindow(): BrowserWindow {

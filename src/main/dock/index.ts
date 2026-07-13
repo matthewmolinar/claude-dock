@@ -20,6 +20,7 @@ import {
   globalShortcut,
   ipcMain,
   screen,
+  session,
   shell,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
@@ -28,10 +29,11 @@ import {
 
 import { LAYOUT } from '../../shared/dock'
 import { DockIpcChannel, DockSessionIpcChannel, DockSettingsIpcChannel, DockWinIpcChannel } from '../../shared/dockChannels'
+import { installArtifactHandler, registerArtifactScheme } from './artifactProtocol'
 import { KeyStore } from './keystore'
 import { SessionManager, type TranscriptMirror } from './sessionManager'
 import { DockStore } from './store'
-import { createDockWindow, createSessionWindow, createSettingsWindow, repositionDock } from './windows'
+import { DOCK_SESSION_PARTITION, createDockWindow, createSessionWindow, createSettingsWindow, repositionDock, resizeForArtifact } from './windows'
 
 const HOTKEYS = {
   toggle: 'Command+Alt+T',
@@ -221,6 +223,10 @@ function registerDockIpc(): void {
     if (folder) void shell.openPath(folder)
   })
 
+  ipcMain.on(DockSessionIpcChannel.CloseArtifact, (_e: IpcMainEvent, index: unknown) => {
+    if (validIndex(index)) sessions!.closeArtifact(index)
+  })
+
   // --- settings ---------------------------------------------------------------
 
   ipcMain.handle(DockSettingsIpcChannel.Init, () => ({ hasKey: keyStore!.has() }))
@@ -318,8 +324,36 @@ export interface RegisterDockWidgetOptions {
   createTranscriptMirror?: (cwd: string) => TranscriptMirror
 }
 
+/**
+ * Privileged schemes must be declared before the app is ready — hosts call
+ * this at module scope, then `registerDockWidget()` from whenReady.
+ */
+export function registerDockProtocolSchemes(): void {
+  registerArtifactScheme()
+}
+
 export function registerDockWidget(options: RegisterDockWidgetOptions = {}): void {
   refreshMenu = options.refreshMenu ?? null
+
+  // Session windows (and anything framed inside them, like artifact pages)
+  // never need the network; the agent's API traffic lives in the main
+  // process. Cancel everything in their partition so a model-authored
+  // artifact page cannot send data anywhere. In dev the window's own
+  // document comes from the electron-vite dev server, so that one origin
+  // stays reachable.
+  const rendererDevHost = process.env.ELECTRON_RENDERER_URL
+    ? new URL(process.env.ELECTRON_RENDERER_URL).host
+    : null
+  const dockSession = session.fromPartition(DOCK_SESSION_PARTITION)
+  dockSession.webRequest.onBeforeRequest(
+    { urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] },
+    (details, callback) => {
+      // host, not origin: the dev server speaks both http (modules) and ws (HMR).
+      const allowed = rendererDevHost && new URL(details.url).host === rendererDevHost
+      callback({ cancel: !allowed })
+    },
+  )
+  installArtifactHandler(dockSession.protocol)
 
   const userData = app.getPath('userData')
   store = new DockStore(path.join(userData, 'dock-state.json'))
@@ -328,6 +362,7 @@ export function registerDockWidget(options: RegisterDockWidgetOptions = {}): voi
     store,
     keyStore,
     createSessionWindow,
+    resizeForArtifact,
     createTranscriptMirror: options.createTranscriptMirror,
   })
   sessions.on('changed', pushState)

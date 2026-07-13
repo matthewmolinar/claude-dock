@@ -9,14 +9,18 @@
  * standalone app injects nothing).
  */
 import { EventEmitter } from 'node:events'
+import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
 import type { BrowserWindow } from 'electron'
 
-import { slotLabel, type DockSnapshot, type SessionEntry, type SessionInitPayload, type TranscriptTool } from '../../shared/dock'
+import { slotLabel, type ArtifactPayload, type DockSnapshot, type SessionEntry, type SessionInitPayload, type TranscriptTool } from '../../shared/dock'
+import { artifactAction, artifactUrl, type SlotArtifact } from '../../shared/dockArtifact'
 import { DockSessionIpcChannel } from '../../shared/dockChannels'
+import { registerArtifact, unregisterArtifact } from './artifactProtocol'
 import { Agent, type AgentToolEvent, type AgentToolResultEvent } from './harness/agent'
+import { resolveInRoot } from './harness/tools'
 import type { KeyStore } from './keystore'
 import type { DockStore } from './store'
 
@@ -36,6 +40,7 @@ export interface TranscriptMirror {
 interface Slot {
   customName: string | null
   folder: string | null
+  artifact: SlotArtifact | null
   firstPrompt: string | null
   agent: Agent | null
   mirror: TranscriptMirror | null
@@ -50,6 +55,8 @@ export interface SessionManagerOptions {
   store: DockStore
   keyStore: KeyStore
   createSessionWindow: (opts: { slotIndex: number; folder: string }) => BrowserWindow
+  /** Widen/restore a session window when its artifact pane opens/closes. */
+  resizeForArtifact: (win: BrowserWindow | null, open: boolean) => void
   /** Optional host hook: mirror each conversation (one mirror per agent). */
   createTranscriptMirror?: (cwd: string) => TranscriptMirror
 }
@@ -58,27 +65,34 @@ export class SessionManager extends EventEmitter {
   private store: DockStore
   private keyStore: KeyStore
   private createSessionWindow: SessionManagerOptions['createSessionWindow']
+  private resizeForArtifact: SessionManagerOptions['resizeForArtifact']
   private createTranscriptMirror?: (cwd: string) => TranscriptMirror
   private slots: Slot[] = []
 
-  constructor({ store, keyStore, createSessionWindow, createTranscriptMirror }: SessionManagerOptions) {
+  constructor({ store, keyStore, createSessionWindow, resizeForArtifact, createTranscriptMirror }: SessionManagerOptions) {
     super()
     this.store = store
     this.keyStore = keyStore
     this.createSessionWindow = createSessionWindow
+    this.resizeForArtifact = resizeForArtifact
     this.createTranscriptMirror = createTranscriptMirror
 
     const persisted = store.get()
     for (let i = 0; i < persisted.slotCount; i++) {
-      const saved = persisted.slots[i] || { customName: null, folder: null }
-      this.slots.push(this.blankSlot(saved.customName ?? null, saved.folder ?? null))
+      const saved = persisted.slots[i] || { customName: null, folder: null, artifact: null }
+      this.slots.push(this.blankSlot(saved.customName ?? null, saved.folder ?? null, saved.artifact ?? null))
     }
   }
 
-  private blankSlot(customName: string | null = null, folder: string | null = null): Slot {
+  private blankSlot(
+    customName: string | null = null,
+    folder: string | null = null,
+    artifact: SlotArtifact | null = null,
+  ): Slot {
     return {
       customName,
       folder,
+      artifact,
       firstPrompt: null,
       agent: null,
       mirror: null,
@@ -96,7 +110,11 @@ export class SessionManager extends EventEmitter {
   persist(): void {
     this.store.set({
       slotCount: this.slots.length,
-      slots: this.slots.map((s) => ({ customName: s.customName, folder: s.folder })),
+      slots: this.slots.map((s) => ({
+        customName: s.customName,
+        folder: s.folder,
+        artifact: s.artifact,
+      })),
     })
   }
 
@@ -180,6 +198,8 @@ export class SessionManager extends EventEmitter {
       slot.mirror = null
       slot.transcript = []
       slot.firstPrompt = null
+      slot.artifact = null
+      unregisterArtifact(this.slots.indexOf(slot))
       slot.busy = false
       win.destroy()
       slot.win = null
@@ -198,6 +218,7 @@ export class SessionManager extends EventEmitter {
 
     slot.win = this.createSessionWindow({ slotIndex: index, folder: slot.folder })
     this.wireWindow(slot)
+    if (this.artifactPayload(index, slot)) this.resizeForArtifact(slot.win, true)
     this.persist()
     this.changed()
   }
@@ -228,8 +249,58 @@ export class SessionManager extends EventEmitter {
       folder: slot.folder,
       busy: slot.busy,
       transcript: slot.transcript,
+      artifact: this.artifactPayload(index, slot),
       hasKey: this.keyStore.has(),
     }
+  }
+
+  // ---- artifact pane -----------------------------------------------------
+
+  /** null when there is no artifact or its file has gone missing. */
+  private artifactPayload(index: number, slot: Slot): ArtifactPayload | null {
+    if (!slot.artifact || !slot.folder) return null
+    try {
+      const file = resolveInRoot(slot.folder, slot.artifact.path)
+      if (!fs.existsSync(file)) throw new Error('gone')
+      // The artifact:// handler serves exactly this file for this slot.
+      registerArtifact(index, file)
+      return { url: artifactUrl(index), title: slot.artifact.title, version: slot.artifact.version || 0 }
+    } catch {
+      unregisterArtifact(index)
+      return null
+    }
+  }
+
+  private applyArtifactAction(
+    index: number,
+    slot: Slot,
+    call: { name: string; input: { path?: unknown; title?: unknown } },
+    ok: boolean,
+  ): void {
+    const action = artifactAction(slot.artifact, call.name, call.input || {}, ok)
+    if (!action) return
+
+    if (action.type === 'show') {
+      const opening = !slot.artifact
+      slot.artifact = { path: action.path, title: action.title, version: 1 }
+      this.persist()
+      const win = this.liveWindow(slot)
+      if (win && opening) this.resizeForArtifact(win, true)
+    } else if (slot.artifact) {
+      slot.artifact.version = (slot.artifact.version || 0) + 1
+    }
+    this.pushWindow(slot, DockSessionIpcChannel.Artifact, this.artifactPayload(index, slot))
+  }
+
+  closeArtifact(index: number): void {
+    const slot = this.slots[index]
+    if (!slot || !slot.artifact) return
+    slot.artifact = null
+    unregisterArtifact(index)
+    this.persist()
+    this.pushWindow(slot, DockSessionIpcChannel.Artifact, null)
+    const win = this.liveWindow(slot)
+    if (win) this.resizeForArtifact(win, false)
   }
 
   // ---- the agent ---------------------------------------------------------
@@ -288,6 +359,8 @@ export class SessionManager extends EventEmitter {
 
     // One assistant bubble per turn; deltas append into it.
     const bubble: SessionEntry & { role: 'assistant' } = { role: 'assistant', text: '', tools: [] }
+    // Tool calls in flight this turn, so a result can be matched to its input.
+    const liveCalls = new Map<string, { name: string; input: { path?: unknown; title?: unknown } }>()
     slot.transcript.push(bubble)
     this.pushWindow(slot, DockSessionIpcChannel.AssistantStart, {})
 
@@ -298,6 +371,7 @@ export class SessionManager extends EventEmitter {
     const onTool = (call: AgentToolEvent): void => {
       const tool: TranscriptTool = { id: call.id, label: call.label, input: call.input, output: null }
       bubble.tools.push(tool)
+      liveCalls.set(call.id, { name: call.name, input: (call.input ?? {}) as { path?: unknown; title?: unknown } })
       this.pushWindow(slot, DockSessionIpcChannel.Tool, { id: call.id, label: call.label })
     }
     const onToolResult = ({ id, ok, output }: AgentToolResultEvent): void => {
@@ -307,6 +381,9 @@ export class SessionManager extends EventEmitter {
         entry.ok = ok
       }
       this.pushWindow(slot, DockSessionIpcChannel.ToolResult, { id, ok, output })
+
+      const call = liveCalls.get(id)
+      if (call) this.applyArtifactAction(index, slot, call, ok)
     }
 
     agent.on('text', onText)
@@ -369,6 +446,7 @@ export class SessionManager extends EventEmitter {
     const slot = this.slots[index]
     if (!slot) return false
     const win = this.liveWindow(slot)
+    unregisterArtifact(index)
     if (slot.agent) slot.agent.abort()
     if (win) win.destroy()
     this.slots[index] = this.blankSlot()

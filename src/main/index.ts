@@ -6,12 +6,15 @@
  */
 import { app } from 'electron'
 
-import { disposeDockWidget, registerDockWidget, showDock } from './dock'
+import { disposeDockWidget, registerDockProtocolSchemes, registerDockWidget, showDock } from './dock'
 
 // A second instance would fight the first over global hotkeys and the dock.
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
+  // The artifact:// scheme must be declared before the app is ready.
+  registerDockProtocolSchemes()
+
   void app.whenReady().then(() => {
     registerDockWidget()
     showDock()

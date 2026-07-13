@@ -4,12 +4,13 @@
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src artifact:"
     />
     <link rel="stylesheet" href="./session.css" />
     <title>Dock Session</title>
   </head>
   <body>
+    <div id="chat">
     <header id="titlebar">
       <div class="lights">
         <button id="close" class="light close" aria-label="Close"></button>
@@ -44,6 +45,20 @@
       <button id="send" aria-label="Send">↑</button>
       <button id="stop" aria-label="Stop" hidden>Stop</button>
     </footer>
+    </div>
+
+    <aside id="artifactPane" hidden>
+      <header id="artifactBar">
+        <span id="artifactTitle"></span>
+        <button id="artifactClose" aria-label="Close artifact">✕</button>
+      </header>
+      <iframe
+        id="artifactFrame"
+        sandbox="allow-scripts allow-same-origin"
+        title="Artifact preview"
+      ></iframe>
+      <div id="artifactError" hidden>Couldn't display this file.</div>
+    </aside>
 
     <script type="module" src="./session.ts"></script>
   </body>

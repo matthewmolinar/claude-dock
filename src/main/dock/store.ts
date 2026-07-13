@@ -9,10 +9,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { LAYOUT } from '../../shared/dock'
+import type { SlotArtifact } from '../../shared/dockArtifact'
 
 export interface PersistedSlot {
   customName: string | null
   folder: string | null
+  artifact: SlotArtifact | null
 }
 
 export interface PersistedDockState {
@@ -40,9 +42,14 @@ export function sanitize(raw: unknown): PersistedDockState {
   if (Array.isArray(input.slots)) {
     state.slots = input.slots.slice(0, state.slotCount).map((s: unknown) => {
       const slot = (s ?? {}) as Record<string, unknown>
+      const artifact = (slot.artifact ?? null) as Record<string, unknown> | null
       return {
         customName: typeof slot.customName === 'string' ? slot.customName : null,
         folder: typeof slot.folder === 'string' ? slot.folder : null,
+        artifact:
+          artifact && typeof artifact.path === 'string' && typeof artifact.title === 'string'
+            ? { path: artifact.path, title: artifact.title }
+            : null,
       }
     })
   }

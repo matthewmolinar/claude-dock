@@ -35,6 +35,7 @@ export const DockSessionIpcChannel = {
   Stop: 'lore:dock-session:stop',
   OpenSettings: 'lore:dock-session:open-settings',
   RevealFolder: 'lore:dock-session:reveal-folder',
+  CloseArtifact: 'lore:dock-session:close-artifact',
   // Main → session pushes, one streaming turn:
   AssistantStart: 'lore:dock-session:assistant-start',
   Text: 'lore:dock-session:text',
@@ -42,6 +43,7 @@ export const DockSessionIpcChannel = {
   ToolResult: 'lore:dock-session:tool-result',
   Entry: 'lore:dock-session:entry',
   Done: 'lore:dock-session:done',
+  Artifact: 'lore:dock-session:artifact',
   KeyState: 'lore:dock-session:key-state',
 } as const
 

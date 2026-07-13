@@ -166,3 +166,35 @@ test('describeToolCall produces human labels, never jargon', () => {
   assert.equal(describeToolCall('list_files', {}), 'Looked in the folder')
   assert.equal(describeToolCall('list_files', { path: 'src' }), 'Looked in src')
 })
+
+// ---- show_artifact -----------------------------------------------------------
+
+test('show_artifact accepts an existing html file', async () => {
+  const root = tmpRoot()
+  fs.writeFileSync(path.join(root, 'dash.html'), '<h1>hi</h1>')
+  const r = await executeTool(root, 'show_artifact', { path: 'dash.html', title: 'Team dashboard' })
+  assert.equal(r.ok, true)
+  assert.match(r.output, /Team dashboard/)
+})
+
+test('show_artifact rejects a disallowed extension', async () => {
+  const root = tmpRoot()
+  fs.writeFileSync(path.join(root, 'archive.zip'), 'x')
+  const r = await executeTool(root, 'show_artifact', { path: 'archive.zip', title: 'Archive' })
+  assert.equal(r.ok, false)
+  assert.match(r.output, /HTML, markdown, text, or image/)
+})
+
+test('show_artifact rejects a missing file', async () => {
+  const root = tmpRoot()
+  const r = await executeTool(root, 'show_artifact', { path: 'ghost.html', title: 'Ghost' })
+  assert.equal(r.ok, false)
+  assert.match(r.output, /not found/i)
+})
+
+test('show_artifact rejects a path outside the root', async () => {
+  const root = tmpRoot()
+  const r = await executeTool(root, 'show_artifact', { path: '../escape.html', title: 'Nope' })
+  assert.equal(r.ok, false)
+  assert.match(r.output, /escapes the session folder/)
+})

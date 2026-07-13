@@ -69,6 +69,14 @@ export function computeDockFrame(
   }
 }
 
+// The artifact pane adds a fixed panel beside the chat column; never grow past
+// the display's work area (with a small margin so the window stays grabbable).
+export const ARTIFACT_PANE_WIDTH = 480
+
+export function expandedSessionWidth(chatWidth: number, workAreaWidth: number): number {
+  return Math.min(chatWidth + ARTIFACT_PANE_WIDTH, workAreaWidth - 40)
+}
+
 export const MAX_LABEL = 22
 
 /** Truncate to `max` chars total, with an ellipsis occupying the last character. */
@@ -150,11 +158,20 @@ export type SessionEntry =
   | { role: 'assistant'; text: string; tools: TranscriptTool[] }
   | { role: 'error'; text: string }
 
+/** What the session renderer needs to show the artifact pane. */
+export interface ArtifactPayload {
+  url: string
+  title: string
+  /** Bumped when the agent edits the shown file, forcing an iframe reload. */
+  version: number
+}
+
 export interface SessionInitPayload {
   index: number
   folder: string | null
   busy: boolean
   transcript: SessionEntry[]
+  artifact: ArtifactPayload | null
   hasKey: boolean
 }
 
@@ -210,12 +227,14 @@ export interface SessionBridge {
   stop(): void
   openSettings(): void
   revealFolder(): void
+  closeArtifact(): void
   onAssistantStart(cb: () => void): () => void
   onText(cb: (delta: string) => void): () => void
   onTool(cb: (call: ToolStartPayload) => void): () => void
   onToolResult(cb: (r: ToolResultPayload) => void): () => void
   onEntry(cb: (entry: SessionEntry) => void): () => void
   onDone(cb: () => void): () => void
+  onArtifact(cb: (a: ArtifactPayload | null) => void): () => void
   onKeyState(cb: (s: KeyStatePayload) => void): () => void
   minimizeWindow(): void
   closeWindow(): void

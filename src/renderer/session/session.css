@@ -35,12 +35,20 @@ body {
 
 body {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   font-size: 14.5px;
   line-height: 1.6;
+}
+
+#chat {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 /* ---- title bar ---- */
@@ -438,6 +446,65 @@ body.has-messages #empty {
 #stop:hover {
   color: var(--danger);
   border-color: rgba(231, 122, 99, 0.4);
+}
+
+/* ---- artifact pane ---- */
+
+#artifactPane {
+  flex: 0 1 480px;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+}
+
+#artifactPane[hidden] {
+  display: none !important;
+}
+
+#artifactBar {
+  height: var(--titlebar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  -webkit-app-region: drag;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 13px;
+  user-select: none;
+}
+
+#artifactClose {
+  -webkit-app-region: no-drag;
+  border: 0;
+  background: none;
+  color: var(--ink-faint);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+#artifactClose:hover {
+  background: var(--panel-hover);
+  color: var(--ink);
+}
+
+#artifactFrame {
+  flex: 1;
+  border: 0;
+  background: #fff;
+}
+
+#artifactError {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-soft);
 }
 
 @media (prefers-reduced-motion: reduce) {

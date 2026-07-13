@@ -3,7 +3,7 @@
  * `renderer/session/session.js`. Streams assistant text into bubbles and
  * tool activity into collapsible chips; replays the transcript on load.
  */
-import type { SessionBridge, ToolResultPayload, ToolStartPayload } from '../../shared/dock'
+import type { ArtifactPayload, SessionBridge, ToolResultPayload, ToolStartPayload } from '../../shared/dock'
 
 declare global {
   interface Window {
@@ -20,6 +20,10 @@ const stopBtn = document.getElementById('stop') as HTMLButtonElement
 const folderBtn = document.getElementById('folder') as HTMLButtonElement
 const titlebar = document.getElementById('titlebar') as HTMLElement
 const needsKey = document.getElementById('needsKey') as HTMLElement
+const artifactPane = document.getElementById('artifactPane') as HTMLElement
+const artifactTitle = document.getElementById('artifactTitle') as HTMLElement
+const artifactFrame = document.getElementById('artifactFrame') as HTMLIFrameElement
+const artifactError = document.getElementById('artifactError') as HTMLElement
 
 let busy = false
 let bubble: HTMLElement | null = null // the assistant text node currently being streamed into
@@ -208,6 +212,30 @@ api.onKeyState(({ hasKey }) => {
   needsKey.hidden = hasKey
 })
 
+// ---- artifact pane ---------------------------------------------------------
+
+function renderArtifact(artifact: ArtifactPayload | null): void {
+  if (!artifact) {
+    artifactPane.hidden = true
+    artifactFrame.removeAttribute('src')
+    return
+  }
+  artifactPane.hidden = false
+  artifactError.hidden = true
+  artifactFrame.hidden = false
+  artifactTitle.textContent = artifact.title
+  // The version query forces a reload when the agent edits the shown file.
+  artifactFrame.src = `${artifact.url}?v=${artifact.version}`
+}
+
+artifactFrame.addEventListener('error', () => {
+  artifactFrame.hidden = true
+  artifactError.hidden = false
+})
+
+document.getElementById('artifactClose')?.addEventListener('click', () => api.closeArtifact())
+api.onArtifact(renderArtifact)
+
 // ---- boot ------------------------------------------------------------------
 
 function prettyFolder(folder: string): string {
@@ -243,6 +271,7 @@ async function init(): Promise<void> {
 
   needsKey.hidden = Boolean(state && state.hasKey)
   setBusy(Boolean(state && state.busy))
+  renderArtifact((state && state.artifact) || null)
   if (state && state.busy) showPending()
   scroll(true)
   syncSend()

@@ -24,7 +24,19 @@ test('sanitize clamps slotCount to a sane range', () => {
 
 test('sanitize strips unknown slot fields and keeps name/folder', () => {
   const s = sanitize({ slotCount: 2, slots: [{ customName: 'a', folder: '/tmp', evil: 1 }] })
-  assert.deepEqual(s.slots, [{ customName: 'a', folder: '/tmp' }])
+  assert.deepEqual(s.slots, [{ customName: 'a', folder: '/tmp', artifact: null }])
+})
+
+test('sanitize keeps a valid artifact and drops a malformed one', () => {
+  const state = sanitize({
+    slotCount: 2,
+    slots: [
+      { folder: '/tmp/a', artifact: { path: 'dash.html', title: 'Dash' } },
+      { folder: '/tmp/b', artifact: { path: 42 } },
+    ],
+  })
+  assert.deepEqual(state.slots[0].artifact, { path: 'dash.html', title: 'Dash' })
+  assert.equal(state.slots[1].artifact, null)
 })
 
 test('sanitize never keeps more slots than slotCount', () => {
@@ -40,7 +52,7 @@ test('sanitize keeps a persisted dockVisible flag', () => {
 test('DockStore round-trips state through disk', () => {
   const file = tmpFile()
   const a = new DockStore(file)
-  a.set({ slotCount: 4, slots: [{ customName: 'lore', folder: '/x' }], dockVisible: true })
+  a.set({ slotCount: 4, slots: [{ customName: 'lore', folder: '/x', artifact: null }], dockVisible: true })
   a.save()
 
   const b = new DockStore(file)

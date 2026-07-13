@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import {
   LAYOUT,
   computeDockFrame,
+  expandedSessionWidth,
   getDockHeight,
   getDockWidth,
   prettyFolder,
@@ -58,6 +59,14 @@ test('computeDockFrame widens as slots are added', () => {
   assert.ok(five.width > three.width)
   assert.equal(five.height, three.height)
   assert.ok(five.x < three.x, 'stays centered as it grows')
+})
+
+test('expandedSessionWidth adds the pane width', () => {
+  assert.equal(expandedSessionWidth(760, 2000), 1240)
+})
+
+test('expandedSessionWidth clamps to the work area', () => {
+  assert.equal(expandedSessionWidth(760, 1100), 1060)
 })
 
 test('truncate leaves short strings alone', () => {

@@ -27,6 +27,7 @@ export interface ToolInput {
   new_text?: string
   content?: string
   command?: string
+  title?: string
 }
 
 export function truncate(text: string): string {
@@ -134,6 +135,30 @@ function runCommand(root: string, command: unknown): Promise<ToolResult> {
   })
 }
 
+// File types the Artifact pane can render. HTML gets loaded directly, markdown
+// and plain text are wrapped in a document view by the artifact protocol, and
+// images are shown as-is. Anything else is a category error.
+const ARTIFACT_EXTENSIONS = new Set([
+  '.html', '.htm', '.md', '.markdown', '.txt', '.png', '.jpg', '.jpeg', '.svg', '.gif',
+])
+
+function showArtifact(root: string, relative: unknown, title: unknown): string {
+  const file = resolveInRoot(root, relative)
+  if (typeof title !== 'string' || !title.trim()) {
+    throw new Error('A short title for the artifact is required.')
+  }
+  const ext = path.extname(file).toLowerCase()
+  if (!ARTIFACT_EXTENSIONS.has(ext)) {
+    throw new Error(
+      `show_artifact only accepts HTML, markdown, text, or image files (.html, .htm, .md, .markdown, .txt, .png, .jpg, .jpeg, .svg, .gif); got "${relative}".`,
+    )
+  }
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    throw new Error(`File not found: ${relative}. Write the file first, then show it.`)
+  }
+  return `"${title.trim()}" is now visible to the user in the Artifact pane beside the conversation.`
+}
+
 // Descriptions are prescriptive about *when* to call each tool — recent models
 // reach for tools conservatively, and trigger conditions measurably help.
 export const TOOL_DEFINITIONS = [
@@ -205,6 +230,26 @@ export const TOOL_DEFINITIONS = [
       required: ['command'],
     },
   },
+  {
+    name: 'show_artifact',
+    description:
+      'Show a finished result to the user in the Artifact pane beside the conversation. Call this whenever you create or update something the user will read or look at: a document or plan (markdown), a dashboard, game, or page (self-contained HTML), or an image. The pane also refreshes automatically when you edit the shown file.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        path: {
+          type: 'string',
+          description:
+            'Path (relative to the session folder) of the HTML, markdown, text, or image file to display.',
+        },
+        title: {
+          type: 'string',
+          description: 'A short human title for the artifact, e.g. "Team dashboard".',
+        },
+      },
+      required: ['path', 'title'],
+    },
+  },
 ]
 
 /** Human-readable one-liner for the activity chip in the UI. */
@@ -222,6 +267,8 @@ export function describeToolCall(name: string, input: ToolInput): string {
       return `Wrote ${path.basename(input.path || '')}`
     case 'run_command':
       return `Ran a command`
+    case 'show_artifact':
+      return `Showed ${input.title || path.basename(input.path || '')}`
     default:
       return name
   }
@@ -241,6 +288,8 @@ export async function executeTool(root: string, name: string, input: ToolInput):
         return { ok: true, output: writeFile(root, input.path, input.content ?? '') }
       case 'run_command':
         return await runCommand(root, input.command)
+      case 'show_artifact':
+        return { ok: true, output: showArtifact(root, input.path, input.title) }
       default:
         return { ok: false, output: `Unknown tool: ${name}` }
     }
