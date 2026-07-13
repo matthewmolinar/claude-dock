@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,8 +20,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
+
+      # Publishing runs `npm pack`, whose prepack hook builds out/.
+      - run: npm ci
+
+      - run: npm test
 
       - run: npx semantic-release
         env:

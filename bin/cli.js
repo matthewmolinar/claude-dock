@@ -2,6 +2,7 @@
 'use strict';
 
 const { spawn } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 
 const colors = {
@@ -20,8 +21,8 @@ const APP_ROOT = path.join(__dirname, '..');
 function shortcuts() {
   log('Shortcuts:');
   log(`  ${colors.dim}⌘⌥T${colors.reset}  Toggle dock`);
-  log(`  ${colors.dim}⌘⌥N${colors.reset}  Add new terminal`);
-  log(`  ${colors.dim}⌘⌥M${colors.reset}  Minimize all terminals`);
+  log(`  ${colors.dim}⌘⌥N${colors.reset}  New session`);
+  log(`  ${colors.dim}⌘⌥M${colors.reset}  Hide all sessions`);
   log(`  ${colors.dim}⌘⌥R${colors.reset}  Reload dock`);
   log('');
 }
@@ -31,7 +32,7 @@ function main() {
 
   if (args.includes('--help') || args.includes('-h')) {
     log('');
-    log(`${colors.blue}Claude Dock${colors.reset} - terminal dock for AI coding agents`);
+    log(`${colors.blue}Claude Dock${colors.reset} - a dock of AI assistant sessions for macOS`);
     log('');
     log('Usage: claude-dock [options]');
     log('');
@@ -45,6 +46,14 @@ function main() {
 
   if (process.platform !== 'darwin') {
     error('Claude Dock only works on macOS');
+    process.exit(1);
+  }
+
+  // Published tarballs ship the prebuilt app (see package.json prepack); a
+  // fresh git clone must build first.
+  if (!fs.existsSync(path.join(APP_ROOT, 'out', 'main', 'index.js'))) {
+    error('The app is not built yet.');
+    log(`  Run ${colors.dim}npm run build${colors.reset} (or ${colors.dim}npm run dev${colors.reset} for live-reload development).`);
     process.exit(1);
   }
 
@@ -63,7 +72,7 @@ function main() {
   }
 
   if (args.includes('--dev')) {
-    const child = spawn(electron, [APP_ROOT, '--dev'], { stdio: 'inherit' });
+    const child = spawn(electron, [APP_ROOT], { stdio: 'inherit' });
     child.on('exit', (code) => process.exit(code ?? 0));
     return;
   }
