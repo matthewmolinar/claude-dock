@@ -2,4 +2,4 @@
 *.log
 node_modules/
 dist/
-src/renderer/terminal/vendor/
+out/

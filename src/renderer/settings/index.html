@@ -1,13 +1,13 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src 'self'; script-src 'self';"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
     />
-    <link rel="stylesheet" href="settings.css" />
-    <title>Lore Settings</title>
+    <link rel="stylesheet" href="./settings.css" />
+    <title>Dock Settings</title>
   </head>
   <body>
     <header id="titlebar">
@@ -15,9 +15,9 @@
     </header>
 
     <main>
-      <h1>Connect Lore</h1>
+      <h1>Connect the Dock</h1>
       <p class="lede">
-        Lore uses Claude. Paste an Anthropic API key to get started. It stays on this
+        Dock sessions use Claude. Paste an Anthropic API key to get started. It stays on this
         Mac and is only ever sent to Anthropic.
       </p>
 
@@ -34,6 +34,6 @@
       </div>
     </main>
 
-    <script src="settings.js"></script>
+    <script type="module" src="./settings.ts"></script>
   </body>
 </html>

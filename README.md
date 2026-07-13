@@ -31,7 +31,8 @@ Then paste an [Anthropic API key](https://console.anthropic.com/settings/keys) w
 git clone https://github.com/matthewmolinar/claude-dock.git
 cd claude-dock
 npm install
-npm start
+npm run build
+npx claude-dock
 ```
 
 ## Usage
@@ -77,7 +78,7 @@ Nothing is sent anywhere except Anthropic.
 
 ## Where your API key lives
 
-`~/Library/Application Support/claude-dock/credentials.json`, owner-read-only (`0600`).
+`~/Library/Application Support/claude-dock/dock-credentials.json`, owner-read-only (`0600`).
 
 Lore deliberately does **not** use Electron's `safeStorage` / macOS Keychain. Because
 the app runs on an unsigned Electron binary, the Keychain does not recognise it and
@@ -92,25 +93,35 @@ put a production key in it.
 ## Development
 
 ```bash
-npm start        # run the app
-npm run dev      # run in the foreground with logs
-npm test         # unit + agent-loop tests (no network, no API key)
+npm run dev        # dev server with live reload
+npm run build      # compile to out/
+npm start          # run the built app
+npm test           # unit + agent-loop tests (no network, no API key)
+npm run typecheck  # strict TypeScript
 ```
 
 The agent tests stand up a local HTTP server that speaks Anthropic's SSE wire
 format, so the whole tool loop is exercised without a key or a network call.
 
-Architecture:
+Architecture (TypeScript, built with electron-vite):
 
-- `src/main/harness/` — the agent loop (`agent.js`) and its tools (`tools.js`)
-- `src/main/` — windows, session state, the key store, IPC
+- `src/main/dock/harness/` — the agent loop (`agent.ts`) and its tools (`tools.ts`)
+- `src/main/dock/` — windows, session state, the key store, IPC, hotkeys
+- `src/main/index.ts` — the thin standalone app lifecycle
 - `src/preload/` — context-isolated bridges; renderers get no Node access
 - `src/renderer/dock|session|settings/` — the three windows
-- `src/shared/` — pure logic (layout math, labels, persisted state), unit tested
+- `src/shared/` — pure logic (layout math, labels, IPC contract), unit tested
+
+The dock also ships embedded inside the [Lore desktop app](https://lore.link).
+`src/main/dock`, `src/preload`, `src/renderer`, and `src/shared` are kept in
+sync with that copy — upstream changes arrive here as automated pull requests.
+PRs to those files are welcome; merged changes get ported upstream so the two
+copies never drift.
 
 `electron` is a runtime dependency rather than a devDependency, so that
-`npx claude-dock` can launch it. That is also why there is no `.dmg` build:
-electron-builder refuses to package an app whose `dependencies` include electron.
+`npx claude-dock` can launch it (published tarballs ship the prebuilt `out/`).
+That is also why there is no `.dmg` build: electron-builder refuses to package
+an app whose `dependencies` include electron.
 
 ## License
 

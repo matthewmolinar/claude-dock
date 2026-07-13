@@ -2,14 +2,17 @@
   "name": "claude-dock",
   "version": "1.4.0",
   "description": "Lore - a clean, minimal dock of AI assistant sessions for macOS",
-  "main": "src/main/index.js",
+  "main": "./out/main/index.js",
   "bin": {
     "claude-dock": "bin/cli.js"
   },
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --dev",
-    "test": "node --test \"test/*.test.js\""
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build"
   },
   "keywords": [
     "claude",
@@ -28,18 +31,25 @@
   },
   "homepage": "https://github.com/matthewmolinar/claude-dock",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "os": [
     "darwin"
   ],
   "files": [
     "bin/",
-    "src/"
+    "out/"
   ],
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
     "electron": "43.1.0"
   },
-  "//": "electron is a runtime dependency, not a devDependency, because `npx claude-dock` must be able to launch it. That rules out electron-builder, which refuses to package an app with electron in dependencies. Packaging as a .dmg would mean moving electron to devDependencies and giving up the npx install path."
+  "//": "electron is a runtime dependency, not a devDependency, because `npx claude-dock` must be able to launch it. That rules out electron-builder, which refuses to package an app with electron in dependencies. The published tarball ships prebuilt out/ (see prepack). src/main/dock, src/preload, src/renderer, and src/shared are synced from the Lore desktop app (tanagram/lore apps/desktop) \u2014 upstream changes arrive as automated PRs.",
+  "devDependencies": {
+    "@types/node": "22.19.15",
+    "electron-vite": "2.3.0",
+    "tsx": "^4.22.4",
+    "typescript": "^7.0.2",
+    "vite": "5.4.21"
+  }
 }

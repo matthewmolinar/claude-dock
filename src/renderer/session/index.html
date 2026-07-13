@@ -1,13 +1,13 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src 'self'; script-src 'self';"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
     />
-    <link rel="stylesheet" href="session.css" />
-    <title>Lore</title>
+    <link rel="stylesheet" href="./session.css" />
+    <title>Dock Session</title>
   </head>
   <body>
     <header id="titlebar">
@@ -45,6 +45,6 @@
       <button id="stop" aria-label="Stop" hidden>Stop</button>
     </footer>
 
-    <script src="session.js"></script>
+    <script type="module" src="./session.ts"></script>
   </body>
 </html>
