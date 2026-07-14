@@ -5,7 +5,7 @@
  * Ported from claude-dock `src/shared/{layout,title}.js`. Must stay free of
  * Node imports: `tsconfig.web.json` compiles this file for the renderer.
  *
- * This file is part of the surface synced to the open-source claude-dock
+ * This file is part of the surface synced to the open-source lore-studio
  * repo (see apps/desktop/scripts/dock-oss-sync.mjs) — keep it host-agnostic.
  */
 
