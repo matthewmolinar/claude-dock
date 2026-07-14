@@ -28,7 +28,7 @@ Then paste an [Anthropic API key](https://console.anthropic.com/settings/keys) w
 ### From source
 
 ```bash
-git clone https://github.com/matthewmolinar/claude-dock.git
+git clone https://github.com/loredotlink/lore-studio.git
 cd claude-dock
 npm install
 npm run build

@@ -27,9 +27,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/matthewmolinar/claude-dock.git"
+    "url": "git+https://github.com/loredotlink/lore-studio.git"
   },
-  "homepage": "https://github.com/matthewmolinar/claude-dock",
+  "homepage": "https://github.com/loredotlink/lore-studio",
   "engines": {
     "node": ">=20"
   },

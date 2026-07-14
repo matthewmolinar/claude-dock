@@ -5,12 +5,12 @@ users**. Lore runs its own agent loop against the Claude API — it does not she
 out to Claude Code, Amp, or Codex, and there is no terminal anywhere in the UI.
 
 TypeScript, built with electron-vite. The dock also ships embedded inside the
-Lore desktop app (`tanagram/lore` `apps/desktop`).
+Lore desktop app (`loredotlink/lore` `apps/desktop`).
 
 ## Synced with the Lore desktop app — read this first
 
 `src/main/dock/`, `src/preload/`, `src/renderer/`, and `src/shared/` are the
-**synced surface**: byte-identical with the copies in `tanagram/lore`
+**synced surface**: byte-identical with the copies in `loredotlink/lore`
 `apps/desktop/src`. The lore monorepo is the source of truth; changes there
 arrive here as automated PRs. If you change these files here, the change must
 be ported upstream or the next sync will overwrite it.
