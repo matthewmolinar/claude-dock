@@ -142,17 +142,45 @@ test('an unknown tool name is reported, not thrown', async () => {
   assert.match(r.output, /Unknown tool/)
 })
 
+const allow = async (): Promise<boolean> => true
+
 test('run_command captures stdout and runs inside the root', async () => {
   const root = tmpRoot()
   fs.writeFileSync(path.join(root, 'marker.txt'), '')
-  const r = await executeTool(root, 'run_command', { command: 'ls' })
+  const r = await executeTool(root, 'run_command', { command: 'ls' }, allow)
   assert.equal(r.ok, true)
   assert.match(r.output, /marker\.txt/)
 })
 
 test('run_command reports a failing command without throwing', async () => {
-  const r = await executeTool(tmpRoot(), 'run_command', { command: 'exit 3' })
+  const r = await executeTool(tmpRoot(), 'run_command', { command: 'exit 3' }, allow)
   assert.equal(r.ok, false)
+})
+
+// ---- command approval (security-critical) -----------------------------------
+
+test('run_command does nothing without an approver', async () => {
+  const root = tmpRoot()
+  const r = await executeTool(root, 'run_command', { command: 'touch ran.txt' })
+  assert.equal(r.ok, false)
+  assert.match(r.output, /declined/)
+  assert.equal(fs.existsSync(path.join(root, 'ran.txt')), false)
+})
+
+test('run_command does nothing when the user declines', async () => {
+  const root = tmpRoot()
+  const r = await executeTool(root, 'run_command', { command: 'touch ran.txt' }, async () => false)
+  assert.equal(r.ok, false)
+  assert.equal(fs.existsSync(path.join(root, 'ran.txt')), false)
+})
+
+test('the approver is shown the exact command it will run', async () => {
+  const seen: string[] = []
+  await executeTool(tmpRoot(), 'run_command', { command: 'cat ~/.ssh/id_rsa' }, async (c) => {
+    seen.push(c)
+    return false
+  })
+  assert.deepEqual(seen, ['cat ~/.ssh/id_rsa'])
 })
 
 // ---- activity labels --------------------------------------------------------
@@ -162,7 +190,9 @@ test('describeToolCall produces human labels, never jargon', () => {
   assert.equal(describeToolCall('write_file', { path: 'x/b.txt' }), 'Wrote b.txt')
   assert.equal(describeToolCall('edit_file', { path: 'c.js', old_text: 'a' }), 'Edited c.js')
   assert.equal(describeToolCall('edit_file', { path: 'c.js', old_text: '' }), 'Created c.js')
-  assert.equal(describeToolCall('run_command', { command: 'ls' }), 'Ran a command')
+  assert.equal(describeToolCall('run_command', { command: 'ls' }), 'Ran: ls')
+  assert.equal(describeToolCall('run_command', { command: 'a\n  b' }), 'Ran: a b')
+  assert.match(describeToolCall('run_command', { command: 'x'.repeat(200) }), /…$/)
   assert.equal(describeToolCall('list_files', {}), 'Looked in the folder')
   assert.equal(describeToolCall('list_files', { path: 'src' }), 'Looked in src')
 })
