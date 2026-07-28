@@ -21,6 +21,11 @@ export interface ToolResult {
   output: string
 }
 
+/** Asks the user to approve one command. Resolves false to decline. */
+export type ConfirmCommand = (command: string) => Promise<boolean>
+
+const CHIP_COMMAND_LIMIT = 60
+
 export interface ToolInput {
   path?: string
   old_text?: string
@@ -110,9 +115,21 @@ function editFile(root: string, relative: unknown, oldStr: string, newStr: strin
   return `Edited ${relative}`
 }
 
-function runCommand(root: string, command: unknown): Promise<ToolResult> {
+/**
+ * Unlike the file tools, a shell command cannot be confined — `cwd` is where it
+ * starts, not a boundary it respects. So nothing runs until the user has seen
+ * the exact command and approved it, and a missing approver denies.
+ */
+async function runCommand(
+  root: string,
+  command: unknown,
+  confirm?: ConfirmCommand,
+): Promise<ToolResult> {
   if (typeof command !== 'string' || !command.trim()) {
     throw new Error('A command is required.')
+  }
+  if (!confirm || !(await confirm(command))) {
+    return { ok: false, output: 'The user declined to run that command.' }
   }
   return new Promise((resolve) => {
     execFile(
@@ -265,8 +282,11 @@ export function describeToolCall(name: string, input: ToolInput): string {
         : `Edited ${path.basename(input.path || '')}`
     case 'write_file':
       return `Wrote ${path.basename(input.path || '')}`
-    case 'run_command':
-      return `Ran a command`
+    case 'run_command': {
+      // The command itself is the audit trail; flatten it to fit one chip.
+      const cmd = (input.command || '').replace(/\s+/g, ' ').trim()
+      return `Ran: ${cmd.length > CHIP_COMMAND_LIMIT ? `${cmd.slice(0, CHIP_COMMAND_LIMIT)}…` : cmd}`
+    }
     case 'show_artifact':
       return `Showed ${input.title || path.basename(input.path || '')}`
     default:
@@ -275,7 +295,12 @@ export function describeToolCall(name: string, input: ToolInput): string {
 }
 
 /** Execute one tool call. Never throws — failures come back as `is_error` text. */
-export async function executeTool(root: string, name: string, input: ToolInput): Promise<ToolResult> {
+export async function executeTool(
+  root: string,
+  name: string,
+  input: ToolInput,
+  confirmCommand?: ConfirmCommand,
+): Promise<ToolResult> {
   try {
     switch (name) {
       case 'list_files':
@@ -287,7 +312,7 @@ export async function executeTool(root: string, name: string, input: ToolInput):
       case 'write_file':
         return { ok: true, output: writeFile(root, input.path, input.content ?? '') }
       case 'run_command':
-        return await runCommand(root, input.command)
+        return await runCommand(root, input.command, confirmCommand)
       case 'show_artifact':
         return { ok: true, output: showArtifact(root, input.path, input.title) }
       default:

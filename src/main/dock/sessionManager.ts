@@ -13,7 +13,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import type { BrowserWindow } from 'electron'
+import { dialog, type BrowserWindow } from 'electron'
 
 import { slotLabel, type ArtifactPayload, type DockSnapshot, type SessionEntry, type SessionInitPayload, type TranscriptTool } from '../../shared/dock'
 import { artifactAction, artifactUrl, type SlotArtifact } from '../../shared/dockArtifact'
@@ -25,6 +25,17 @@ import type { KeyStore } from './keystore'
 import type { DockStore } from './store'
 
 const MAX_SLOTS = 12
+
+/**
+ * Where a session starts when the user has not picked a folder. A dedicated
+ * folder, not the home dircetory >> an unpicked sesion should not hand the
+ * agent everything the user owns.
+ */
+function defaultFolder(): string {
+  const dir = path.join(os.homedir(), 'Lore')
+  fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
 
 /**
  * Optional per-conversation mirror. The agent's verbatim Anthropic message
@@ -211,10 +222,10 @@ export class SessionManager extends EventEmitter {
       return
     }
 
-    // A session starts in the user's home folder unless they point it somewhere
+    // A session starts in its own folder unless the user points it somewhere
     // else. Nobody should have to answer a file-picker before saying hello.
     if (folder) slot.folder = folder
-    if (!slot.folder) slot.folder = os.homedir()
+    if (!slot.folder) slot.folder = defaultFolder()
 
     slot.win = this.createSessionWindow({ slotIndex: index, folder: slot.folder })
     this.wireWindow(slot)
@@ -311,11 +322,12 @@ export class SessionManager extends EventEmitter {
     const apiKey = this.keyStore.get()
     if (!apiKey) throw new Error('NO_API_KEY')
 
-    const folder = slot.folder ?? os.homedir()
+    const folder = slot.folder ?? defaultFolder()
     slot.agent = new Agent({
       apiKey,
       root: folder,
       folderName: folder === os.homedir() ? 'your home folder' : path.basename(folder),
+      confirmCommand: (command) => this.confirmCommand(slot, command),
     })
 
     // One mirror per agent: a new agent is a new conversation.
@@ -327,6 +339,21 @@ export class SessionManager extends EventEmitter {
     }
 
     return slot.agent
+  }
+
+
+  private async confirmCommand(slot: Slot, command: string): Promise<boolean> {
+    const win = this.liveWindow(slot)
+    if (!win) return false
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'question',
+      message: 'Run this on your Mac?',
+      detail: command,
+      buttons: ['Run', "Don't run"],
+      defaultId: 1,
+      cancelId: 1,
+    })
+    return response === 0
   }
 
   async prompt(index: number, text: string): Promise<void> {

@@ -15,7 +15,7 @@ import { EventEmitter } from 'node:events'
 
 import Anthropic from '@anthropic-ai/sdk'
 
-import { TOOL_DEFINITIONS, describeToolCall, executeTool, type ToolInput } from './tools'
+import { TOOL_DEFINITIONS, describeToolCall, executeTool, type ConfirmCommand, type ToolInput } from './tools'
 
 export const MODEL = 'claude-opus-4-8'
 const MAX_TOKENS = 32000
@@ -44,6 +44,8 @@ export interface AgentOptions {
   apiKey: string
   root: string
   folderName: string
+  /** Gate for `run_command`. Omitted means every command is declined. */
+  confirmCommand?: ConfirmCommand
 }
 
 export interface AgentToolEvent {
@@ -71,6 +73,7 @@ export class Agent extends EventEmitter {
   private client: Anthropic
   private root: string
   private system: string
+  private confirmCommand?: ConfirmCommand
   /**
    * The running conversation. Assistant turns are stored verbatim
    * (`response.content` unmodified) — see module docblock.
@@ -80,11 +83,12 @@ export class Agent extends EventEmitter {
   private aborted = false
   private stream: { abort(): void } | null = null
 
-  constructor({ apiKey, root, folderName }: AgentOptions) {
+  constructor({ apiKey, root, folderName, confirmCommand }: AgentOptions) {
     super()
     this.client = new Anthropic({ apiKey })
     this.root = root
     this.system = systemPrompt(folderName)
+    this.confirmCommand = confirmCommand
   }
 
   abort(): void {
@@ -145,7 +149,7 @@ export class Agent extends EventEmitter {
             input: call.input,
           } satisfies AgentToolEvent)
 
-          const { ok, output } = await executeTool(this.root, call.name, input)
+          const { ok, output } = await executeTool(this.root, call.name, input, this.confirmCommand)
 
           this.emit('tool_result', { id: call.id, ok, output } satisfies AgentToolResultEvent)
           results.push({
