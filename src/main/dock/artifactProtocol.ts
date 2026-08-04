@@ -11,6 +11,7 @@
  * handler serves nothing but the one registered file per slot.
  */
 import fs from 'node:fs'
+import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -21,13 +22,24 @@ import { escapeHtml, renderMarkdown } from '../../shared/dockMarkdown'
 
 // slot host ("slot-3") -> absolute path of the currently shown artifact.
 const registry = new Map<string, string>()
+const currentHostBySlot = new Map<number, string>()
 
-export function registerArtifact(slotIndex: number, file: string): void {
-  registry.set(artifactHost(slotIndex), file)
+export function registerArtifact(slotIndex: number, file: string): string {
+  const previousHost = currentHostBySlot.get(slotIndex)
+  if (previousHost) registry.delete(previousHost)
+  const extension = path.extname(file).toLowerCase()
+  const host = extension === '.md' || extension === '.markdown'
+    ? `markdown-slot-${slotIndex}-${randomBytes(16).toString('hex')}`
+    : artifactHost(slotIndex)
+  currentHostBySlot.set(slotIndex, host)
+  registry.set(host, file)
+  return `artifact://${host}/`
 }
 
 export function unregisterArtifact(slotIndex: number): void {
-  registry.delete(artifactHost(slotIndex))
+  const host = currentHostBySlot.get(slotIndex)
+  if (host) registry.delete(host)
+  currentHostBySlot.delete(slotIndex)
 }
 
 /** Must run before app.whenReady, or the scheme gets no origin/storage. */
@@ -53,10 +65,32 @@ const DOC_STYLE = `
          font: 13px ui-monospace, "SF Mono", Menlo, monospace; }
   pre { background: rgba(255,255,255,0.06); border-radius: 8px; padding: 14px 16px; overflow-x: auto; }
   pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 0.9em 0; }
+  th, td { border: 1px solid rgba(255,255,255,0.14); padding: 6px 10px; text-align: left; }
+  th { color: #d97757; font-weight: 600; }
+  button[data-work-program-item] { appearance: none; border: 1px solid #e8a284; border-radius: 4px;
+         background: rgba(232,162,132,0.12); color: #e8a284; padding: 5px 9px;
+         font: inherit; font-weight: 600; cursor: pointer; }
+  button[data-work-program-item]:hover { background: rgba(232,162,132,0.2); }
+  button[data-work-program-item]:focus-visible { outline: 2px solid #e8a284; outline-offset: 2px; }
 `
 
-function documentPage(body: string): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${DOC_STYLE}</style></head><body><main>${body}</main></body></html>`
+const WORK_PROGRAM_ACTION_SCRIPT = `<script>
+  document.addEventListener('click', (event) => {
+    const button = event.target instanceof Element
+      ? event.target.closest('button[data-work-program-item]')
+      : null
+    if (!button) return
+    const itemId = button.getAttribute('data-work-program-item')
+    if (itemId) parent.postMessage({ type: 'work-program:implement', itemId }, '*')
+  })
+</script>`
+
+function documentPage(body: string, workProgramActions = false): string {
+  const policy = workProgramActions
+    ? `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">`
+    : ''
+  return `<!doctype html><html><head><meta charset="utf-8">${policy}<style>${DOC_STYLE}</style></head><body><main>${body}</main>${workProgramActions ? WORK_PROGRAM_ACTION_SCRIPT : ''}</body></html>`
 }
 
 /**
@@ -76,8 +110,9 @@ export function installArtifactHandler(target: Protocol = protocol): void {
       } catch {
         return new Response('Not found', { status: 404 })
       }
-      const body = ext === '.txt' ? `<pre>${escapeHtml(source)}</pre>` : renderMarkdown(source)
-      return new Response(documentPage(body), {
+      const isMarkdown = ext !== '.txt'
+      const body = isMarkdown ? renderMarkdown(source, { workProgramActions: true }) : `<pre>${escapeHtml(source)}</pre>`
+      return new Response(documentPage(body, isMarkdown), {
         headers: { 'content-type': 'text/html; charset=utf-8' },
       })
     }

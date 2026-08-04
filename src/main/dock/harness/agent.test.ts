@@ -5,7 +5,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 
-import { Agent, type AgentDoneEvent, type AgentToolEvent, type AgentToolResultEvent } from './agent'
+import {
+  Agent,
+  type AgentDoneEvent,
+  type AgentOptions,
+  type AgentToolEvent,
+  type AgentToolResultEvent,
+  type HostTool,
+} from './agent'
 
 // Point the SDK at a local stand-in for api.anthropic.com. This exercises the
 // real streaming parser, the real message shapes, and the real tool loop
@@ -46,7 +53,10 @@ interface RecordedRequest {
   output_config: { effort: string }
   temperature?: number
   top_p?: number
-  tools: Array<{ name: string }>
+  tools: Array<{
+    name: string
+    input_schema: { properties: Record<string, unknown> }
+  }>
   messages: Array<{ role: string; content: Array<Record<string, unknown>> | string }>
 }
 
@@ -101,6 +111,7 @@ interface AgentHarness {
 async function withAgent(
   serverFactory: (calls: RecordedRequest[]) => http.Server,
   fn: (harness: AgentHarness) => Promise<void>,
+  extra: Partial<AgentOptions> = {},
 ): Promise<void> {
   const calls: RecordedRequest[] = []
   const server = serverFactory(calls)
@@ -111,7 +122,7 @@ async function withAgent(
   process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${port}`
 
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'lore-dock-agent-')))
-  const agent = new Agent({ apiKey: 'sk-ant-test', root, folderName: path.basename(root) })
+  const agent = new Agent({ apiKey: 'sk-ant-test', root, folderName: path.basename(root), ...extra })
 
   try {
     await fn({ agent, root, calls })
@@ -205,6 +216,9 @@ test('agent requests adaptive thinking, high effort, and declares its tools', as
     ])
     // The system prompt must never leak the folder's absolute path.
     assert.ok(!req.system.includes('/private/'), 'system prompt leaks an absolute path')
+    assert.match(req.system, /Do not list Evidence; the system derives Evidence lineage/)
+    const show = req.tools.find((tool) => tool.name === 'show_artifact')!
+    assert.ok('provenance' in show.input_schema.properties)
   })
 })
 
@@ -297,6 +311,118 @@ function showArtifactThenEnd(calls: RecordedRequest[]): http.Server {
     })
   })
 }
+
+// ---------------------------------------------------------------------------
+// Host tools (the optional host-hook seam — see `HostTool` in agent.ts)
+// ---------------------------------------------------------------------------
+
+function fakeHostTool(overrides: Partial<HostTool> = {}): HostTool {
+  return {
+    definition: {
+      name: 'team_lookup',
+      description: 'Look something up in the host app.',
+      input_schema: {
+        type: 'object',
+        properties: { question: { type: 'string' } },
+        required: ['question'],
+      },
+    },
+    promptLine: 'You can also look things up with the team_lookup tool.',
+    isAvailable: () => true,
+    describe: (input) => `Looked up "${String(input.question ?? '')}"`,
+    execute: async () => ({ ok: true, output: 'the answer is 42' }),
+    ...overrides,
+  }
+}
+
+test('host tools are offered only while available, and the prompt names them', async () => {
+  let available = true
+  await withAgent(
+    toolThenAnswer,
+    async ({ agent, root, calls }) => {
+      fs.writeFileSync(path.join(root, 'note.txt'), 'hi')
+      await agent.send('read the note')
+
+      // Offered while available: the tool rides along with the built-ins and
+      // its prompt line lands in the system prompt.
+      assert.ok(calls[0].tools.some((t) => t.name === 'team_lookup'))
+      assert.match(calls[0].system, /team_lookup/)
+
+      // Availability is re-read per model call: flipping it off removes both.
+      available = false
+      await agent.send('thanks')
+      const last = calls.at(-1)!
+      assert.ok(!last.tools.some((t) => t.name === 'team_lookup'))
+      assert.ok(!last.system.includes('team_lookup'))
+    },
+    { hostTools: [fakeHostTool({ isAvailable: () => available })] },
+  )
+})
+
+/** Turn 1: call the host tool. Turn 2: report the answer. */
+function hostToolThenAnswer(calls: RecordedRequest[]): http.Server {
+  return http.createServer((req, res) => {
+    let body = ''
+    req.on('data', (c) => (body += c))
+    req.on('end', () => {
+      calls.push(JSON.parse(body) as RecordedRequest)
+      if (calls.length === 1) {
+        sse(res, [
+          ['message_start', messageStart],
+          ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_h', name: 'team_lookup', input: {} } }],
+          ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"question":"what is the answer?"}' } }],
+          ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+          ['message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 9 } }],
+          ['message_stop', { type: 'message_stop' }],
+        ])
+        return
+      }
+      sse(res, [
+        ['message_start', messageStart],
+        ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
+        ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'It is 42.' } }],
+        ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+        ['message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 5 } }],
+        ['message_stop', { type: 'message_stop' }],
+      ])
+    })
+  })
+}
+
+test('a host tool round-trips through the tool loop with its own label and result', async () => {
+  const executed: unknown[] = []
+  const hostTool = fakeHostTool({
+    execute: async (input) => {
+      executed.push(input)
+      return { ok: true, output: 'the answer is 42' }
+    },
+  })
+
+  await withAgent(
+    hostToolThenAnswer,
+    async ({ agent, calls }) => {
+      const tools: AgentToolEvent[] = []
+      const results: AgentToolResultEvent[] = []
+      agent.on('tool', (t: AgentToolEvent) => tools.push(t))
+      agent.on('tool_result', (r: AgentToolResultEvent) => results.push(r))
+      agent.on('error', (e: { message: string }) => assert.fail(`unexpected error: ${e.message}`))
+
+      await agent.send('what is the answer?')
+
+      // The host tool executed (not the folder toolbox) with the model's input.
+      assert.deepEqual(executed, [{ question: 'what is the answer?' }])
+      assert.equal(tools[0].label, 'Looked up "what is the answer?"')
+      assert.deepEqual(results, [{ id: 'toolu_h', ok: true, output: 'the answer is 42' }])
+
+      // And its result rode back to the API in the standard tool_result shape.
+      const toolTurn = calls[1].messages.at(-1)!
+      assert.deepEqual(toolTurn.content, [
+        { type: 'tool_result', tool_use_id: 'toolu_h', content: 'the answer is 42', is_error: false },
+      ])
+    },
+    { hostTools: [hostTool] },
+  )
+})
 
 test('show_artifact round-trips through the tool loop', async () => {
   await withAgent(showArtifactThenEnd, async ({ agent, root, calls }) => {

@@ -20,13 +20,22 @@
       <button id="folder" title="Open this folder in Finder"></button>
     </header>
 
+    <section id="projectResume" aria-label="Project state">
+      <button id="resumeToggle" type="button" aria-expanded="true" aria-controls="resumeContent">
+        <span>Project state</span><span id="resumeToggleSummary"></span><span aria-hidden="true">⌃</span>
+      </button>
+      <div id="resumeContent"></div>
+    </section>
+
+    <aside id="sourcesShell" aria-label="Sources">
+      <div id="sourceNotice" role="status" hidden><span></span><button type="button" aria-label="Dismiss source notice">✕</button></div>
+      <button id="sourcesToggle" type="button" aria-label="Show sources" aria-expanded="false">Sources 0</button>
+      <div id="sourcesList" hidden></div>
+    </aside>
+
     <main id="thread">
       <div id="empty" aria-hidden="true">
-        <svg id="mascot" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <polygon class="ear" points="27,17 56,30 41,45" />
-          <polygon class="ear" points="93,17 64,30 79,45" />
-          <rect class="body" x="20" y="45" width="82" height="75" rx="7" />
-        </svg>
+        <canvas id="loreWave" width="128" height="48"></canvas>
       </div>
     </main>
 
@@ -35,7 +44,13 @@
       <button id="openSettings">Open Settings</button>
     </div>
 
+    <div id="compatibilityNotice" hidden>
+      <p></p>
+      <button id="checkForUpdates" type="button"></button>
+    </div>
+
     <footer id="composer">
+      <button id="addReference" type="button" aria-label="Add reference document" title="Add reference document" hidden>+</button>
       <textarea
         id="input"
         rows="1"
@@ -43,13 +58,26 @@
         autofocus
       ></textarea>
       <button id="send" aria-label="Send">↑</button>
-      <button id="stop" aria-label="Stop" hidden>Stop</button>
+      <button id="stop" aria-label="Stop response" hidden>
+        <span class="stop-icon" aria-hidden="true"></span>
+      </button>
     </footer>
     </div>
 
     <aside id="artifactPane" hidden>
+      <div
+        id="artifactResize"
+        role="separator"
+        aria-label="Resize artifact pane"
+        aria-orientation="vertical"
+        aria-valuemin="280"
+        aria-valuemax="480"
+        aria-valuenow="480"
+        tabindex="0"
+      ></div>
       <header id="artifactBar">
         <span id="artifactTitle"></span>
+        <button id="artifactShare" aria-label="Share artifact with your team">Share</button>
         <button id="artifactClose" aria-label="Close artifact">✕</button>
       </header>
       <iframe
@@ -57,7 +85,19 @@
         sandbox="allow-scripts allow-same-origin"
         title="Artifact preview"
       ></iframe>
+      <div id="sourcePreview" class="markdown" hidden></div>
       <div id="artifactError" hidden>Couldn't display this file.</div>
+    </aside>
+    <aside id="outputsShell" hidden aria-label="Outputs">
+      <div id="outputsMenu" hidden>
+        <button id="outputsToggle" type="button" aria-label="Show outputs" aria-expanded="false"></button>
+        <div id="outputsList" hidden></div>
+      </div>
+      <button id="showRemovedOutputs" type="button" aria-label="Show removed outputs" hidden>Show removed</button>
+    </aside>
+    <aside id="evidencePane" hidden>
+      <header id="evidenceBar"><strong>Evidence</strong><button id="evidenceClose" aria-label="Close Evidence">✕</button></header>
+      <div id="evidenceContent"></div>
     </aside>
 
     <script type="module" src="./session.ts"></script>

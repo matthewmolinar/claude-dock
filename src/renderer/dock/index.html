@@ -4,19 +4,25 @@
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:"
     />
     <link rel="stylesheet" href="./dock.css" />
     <title>Dock</title>
   </head>
   <body>
+    <button id="compactHandle" aria-label="Open Workbench dock" title="Open Workbench dock">
+      <span id="handleGrip" aria-hidden="true"></span>
+      <span id="handleMark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span id="handleCount">0</span>
+      <span id="handleAttention" aria-hidden="true"></span>
+    </button>
+    <!-- Invisible host for the hovered slot's card stack; positioned per-slot
+         by dock.ts. No visible container — the cards float over the desktop. -->
+    <div id="stack" hidden></div>
     <div id="dock">
-      <header id="topbar">
-        <div id="actions">
-          <button id="settingsBtn" class="ghost" title="Settings">Settings</button>
-          <button id="minAllBtn" class="ghost" title="⌘⌥M">Hide all</button>
-        </div>
-      </header>
+      <!-- Slim tray, homepage-style: no header row. The tray surface itself is
+           the drag region; the lone × floats above its top-right corner. -->
+      <button id="dismissBtn" title="Hide the dock and all sessions — ⌘⌥T brings it back" aria-label="Hide the dock and all sessions">×</button>
       <div id="slots"></div>
     </div>
     <script type="module" src="./dock.ts"></script>
