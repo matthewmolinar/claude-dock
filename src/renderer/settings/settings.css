@@ -1,13 +1,15 @@
+@import "@lore/design-system/tokens.css";
+
 :root {
-  --ink: #edeae5;
-  --ink-soft: #a5a099;
-  --ink-faint: #6f6b65;
-  --bg: #1a1917;
-  --panel: #232120;
-  --line: rgba(255, 255, 255, 0.1);
-  --accent: #d97757;
-  --ok: #4caf6d;
-  --danger: #e77a63;
+  --ink: var(--lore-ink);
+  --ink-soft: var(--lore-text-muted);
+  --ink-faint: var(--lore-text-muted);
+  --bg: var(--lore-paper);
+  --panel: var(--lore-white);
+  --line: var(--lore-line);
+  --accent: var(--lore-cobalt);
+  --ok: var(--lore-success);
+  --danger: var(--lore-error);
 }
 
 * {
@@ -31,7 +33,7 @@ body {
   display: flex;
   flex-direction: column;
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-family: var(--lore-font-sans);
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }

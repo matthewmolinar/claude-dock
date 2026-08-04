@@ -1,3 +1,5 @@
+@import "@lore/design-system/tokens.css";
+
 :root {
   --slot-w: 150px;
   --slot-h: 62px;
@@ -5,21 +7,27 @@
   --margin: 12px;
   --header-h: 26px;
   --add-w: 44px;
+  --dock-h: 112px;
+  /* Stack geometry: card width (STACK_CARD_WIDTH in dock.ts) and the vertical
+     pitch of a fanned card (card height + gap). */
+  --stack-w: 178px;
+  --stack-pitch: 56px;
 
-  --ink: #edeae5;
-  --ink-soft: #a5a099;
-  --ink-faint: #6f6b65;
-  --surface: rgba(30, 29, 27, 0.94);
-  --card: #292725;
-  --card-hover: #322f2c;
-  --card-raised: #35322e;
-  --line: rgba(255, 255, 255, 0.09);
+  /* Cream tray palette, matched to the homepage Workbench strip. */
+  --ink: var(--lore-ink);
+  --ink-soft: var(--lore-text-muted);
+  --ink-faint: var(--lore-text-muted);
+  --surface: var(--lore-paper);
+  --card: var(--lore-white);
+  --card-hover: var(--lore-surface-subtle);
+  --card-raised: var(--lore-white);
+  --line: var(--lore-line);
 
-  --accent: #d97757;
-  --working: #e0a13c;
-  --active: #4caf6d;
-  --hidden-dot: #6f93c4;
-  --idle: #5c5852;
+  --accent: var(--lore-cobalt);
+  --working: var(--lore-warning);
+  --active: var(--lore-success);
+  --hidden-dot: var(--lore-sky);
+  --idle: var(--lore-text-muted);
 }
 
 * {
@@ -37,54 +45,382 @@ body {
   height: 100%;
   background: transparent;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-family: var(--lore-font-sans);
   -webkit-font-smoothing: antialiased;
   cursor: default;
   user-select: none;
   color: var(--ink);
 }
 
-#dock {
-  height: 100%;
-  padding: var(--margin);
-  padding-top: 4px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+/* The window grows upward when a card stack opens; the strip stays pinned to
+   the bottom edge so it never visually moves. */
+body {
   display: flex;
   flex-direction: column;
-}
-
-/* ---- header ---- */
-
-#topbar {
-  height: var(--header-h);
-  display: flex;
-  align-items: center;
   justify-content: flex-end;
 }
 
-#actions {
+/* The always-on-top surface rests as a small, stable edge handle instead of
+   claiming the bottom-center of every workspace. Main resizes this same
+   window before toggling the presentation, so no second overlay is needed. */
+#compactHandle {
+  position: relative;
+  width: 64px;
+  height: 42px;
+  flex: none;
+  align-self: center;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(31, 28, 23, 0.12);
+  border-bottom: 0;
+  border-radius: 15px 15px 0 0;
+  background: rgba(247, 243, 236, 0.96);
+  color: var(--ink-soft);
+  box-shadow: 0 -4px 14px rgba(31, 28, 23, 0.12);
+  font: 600 11px/1 var(--lore-font-sans);
+  transition: background 140ms ease, color 140ms ease;
+}
+
+#handleGrip {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 8px;
+  -webkit-app-region: drag;
+}
+
+#compactHandle:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+#handleMark {
+  display: flex;
+  align-items: flex-end;
   gap: 2px;
+  height: 13px;
 }
 
-.ghost {
+#handleMark i {
+  display: block;
+  width: 3px;
+  height: 8px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.48;
+}
+
+#handleMark i:nth-child(2) {
+  height: 13px;
+}
+
+#handleMark i:nth-child(3) {
+  height: 10px;
+}
+
+#handleAttention {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--active);
+  opacity: 0;
+}
+
+#compactHandle[data-state="working"] #handleAttention {
+  background: var(--working);
+  opacity: 1;
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
+#compactHandle[data-state="attention"] #handleAttention {
+  background: var(--accent);
+  opacity: 1;
+  animation: handle-attention 900ms ease-out 2;
+}
+
+@keyframes handle-attention {
+  0% { box-shadow: 0 0 0 0 rgba(232, 115, 74, 0.55); }
+  100% { box-shadow: 0 0 0 7px rgba(232, 115, 74, 0); }
+}
+
+body:not([data-ready="true"]) {
+  visibility: hidden;
+}
+
+body[data-expanded="true"] #compactHandle,
+body:not([data-expanded="true"]) #dock {
+  display: none;
+}
+
+#dock {
+  position: relative;
+  flex: none;
+  height: var(--dock-h);
+  padding: var(--margin);
+  background: var(--surface);
   border: 0;
-  background: transparent;
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--ink-faint);
-  cursor: default;
-  transition: background 120ms ease, color 120ms ease;
+  border-radius: 24px;
+  /* Draw the border inside the tray without letting it consume layout space.
+     The BrowserWindow is sized to the strip plus padding exactly; a real
+     border makes multi-session strips overflow and clips the add tile's
+     right-hand dash. An outer shadow would clip at the window bounds. */
+  box-shadow: inset 0 0 0 1px var(--line);
+  display: flex;
+  flex-direction: column;
+  /* No header row anymore: the tray surface itself moves the window. */
+  -webkit-app-region: no-drag;
 }
 
-.ghost:hover {
-  background: rgba(255, 255, 255, 0.07);
+/* Compact mode moves via its small handle. Only an explicitly pinned full
+   tray is draggable, so native dragging cannot race transient auto-collapse. */
+body[data-pinned="true"] #dock {
+  -webkit-app-region: drag;
+}
+
+/* The in-app Workbench is a permanent part of Lore's workspace, not a
+   draggable/dismissible global overlay. */
+body[data-surface="in-app"] #dock {
+  -webkit-app-region: no-drag;
+}
+
+body[data-surface="in-app"] #dismissBtn {
+  display: none;
+}
+
+/* ---- hover stack ---- */
+
+/* Invisible host for the hovered slot's cards: anchored just above the slot
+   row (the strip is pinned to the window's bottom edge), positioned
+   horizontally per-slot by dock.ts. The region is tall enough that the fan
+   and the gaps between fanned cards all count as "inside" for :hover. */
+#stack {
+  -webkit-app-region: no-drag;
+  position: fixed;
+  bottom: calc(var(--margin) + var(--slot-h) + 6px);
+  left: 0;
+  width: var(--stack-w);
+  height: 300px;
+  z-index: 30;
+}
+
+/* Depth model: --d is 0 for the front (newest) card, growing toward the back.
+   Peek (slot hovered): slivers rise behind the front card, scaled and dimmed
+   for distance. Fan (pointer inside the stack, or a drag in flight): every
+   card readable, with a slight falloff so the depth illusion survives. */
+.stack-card {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: var(--stack-w);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(31, 28, 23, 0.12);
+  /* Brighter top edge: light catching the paper. */
+  border-top-color: rgba(255, 255, 255, 0.9);
+  background: #fffdf9;
+  cursor: default;
+  transform-origin: 50% 100%;
+  z-index: calc(10 - var(--d));
+  transform: translateY(calc(var(--d) * -15px)) scale(calc(1 - var(--d) * 0.06));
+  filter: brightness(calc(1 - var(--d) * 0.17));
+  box-shadow: 0 10px 26px rgba(31, 28, 23, 0.28);
+  transition:
+    transform 340ms cubic-bezier(0.32, 1.25, 0.4, 1),
+    filter 250ms ease,
+    opacity 200ms ease,
+    box-shadow 250ms ease;
+}
+
+/* In the peek deck only the front three read as paper; deeper cards wait
+   hidden until the fan spreads them out. */
+.stack-card[data-depth="3"],
+.stack-card[data-depth="4"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#stack:hover .stack-card,
+#stack.drag-from .stack-card {
+  transform: translateY(calc(var(--d) * -1 * var(--stack-pitch)))
+    scale(calc(1 - var(--d) * 0.03));
+  filter: brightness(calc(1 - var(--d) * 0.08));
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The hovered card comes forward and reveals its note in place. */
+#stack:hover .stack-card:hover {
+  transform: translateY(calc(var(--d) * -1 * var(--stack-pitch))) scale(1.04);
+  filter: none;
+  z-index: 20;
+  box-shadow: 0 16px 40px rgba(31, 28, 23, 0.32);
+}
+
+#stack:hover .stack-card:hover .stack-card-sub {
+  max-height: 66px;
+  margin-top: 4px;
+}
+
+/* Cards behind the hovered one slide up to make room for its note, so the
+   reveal never buries a neighbor (cards render front-to-back in the DOM). */
+#stack:hover .stack-card:hover ~ .stack-card {
+  transform: translateY(calc(var(--d) * -1 * var(--stack-pitch) - 74px))
+    scale(calc(1 - var(--d) * 0.03));
+}
+
+/* Staggered rise out of the slot on open. `from`-only keyframe: each card
+   settles into its own depth transform. */
+.stack-card.rise {
+  animation: stack-rise 340ms cubic-bezier(0.32, 1.25, 0.4, 1) backwards;
+  animation-delay: calc(var(--d) * 25ms);
+}
+
+@keyframes stack-rise {
+  from {
+    transform: translateY(26px) scale(0.6);
+    opacity: 0;
+  }
+}
+
+.stack-card[data-state="pending"] {
+  color: var(--ink-faint);
+}
+
+.stack-card-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-soft);
+}
+
+.stack-card[data-state="pending"] .stack-card-top {
+  color: var(--ink-faint);
+}
+
+.stack-card-glyph {
+  display: flex;
+  flex: none;
+}
+
+.stack-card-glyph svg {
+  width: 13px;
+  height: 13px;
+}
+
+.stack-card-time {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stack-card-state {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.stack-card-check {
+  color: var(--active);
+}
+
+.stack-card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stack-card[data-state="pending"] .stack-card-title {
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
+/* The note body: collapsed until the card is hovered inside the fan. */
+.stack-card-sub {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  max-height: 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  transition: max-height 300ms ease, margin 300ms ease;
+}
+
+/* Card lifted out of the stack during a drag: tracks the pointer 1:1, so the
+   depth transition must not lag it. It carries its revealed note along. */
+.stack-card.dragging {
+  position: fixed;
+  bottom: auto;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 1;
+  filter: none;
+  transition: none;
+  box-shadow: 0 12px 30px rgba(31, 28, 23, 0.3);
+}
+
+.stack-card.dragging .stack-card-sub {
+  max-height: 66px;
+  margin-top: 4px;
+}
+
+.stack-card.snapping {
+  transition: transform 120ms ease;
+}
+
+.stack-card.springback {
+  transition: transform 200ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+/* ---- close control ----
+
+   The header row and the floating actions bar are gone. The tray-wide ×
+   sits just above the top-right corner and appears with the tray's hover
+   state. Because it remains a child of #dock, the hover stays active while
+   the pointer moves onto the visually external control. */
+
+#dismissBtn {
+  position: absolute;
+  top: calc(-1 * var(--header-h));
+  right: 7px;
+  z-index: 25;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: var(--card);
+  color: var(--ink-faint);
+  box-shadow: 0 2px 6px rgba(31, 28, 23, 0.16);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: default;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+  -webkit-app-region: no-drag;
+}
+
+#dock:hover #dismissBtn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#dismissBtn:hover {
+  background: rgba(31, 28, 23, 0.07);
   color: var(--ink);
 }
 
@@ -94,16 +430,25 @@ body {
   display: flex;
   gap: var(--gap);
   align-items: center;
-  padding-top: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+#slots::-webkit-scrollbar {
+  display: none;
 }
 
 .slot {
   position: relative;
+  flex: none;
   width: var(--slot-w);
   height: var(--slot-h);
-  border-radius: 12px;
-  border: 1px solid transparent;
+  border-radius: 14px;
+  border: 1px solid var(--line);
   background: var(--card);
+  box-shadow: 0 2px 6px rgba(31, 28, 23, 0.06);
+  -webkit-app-region: no-drag;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -125,16 +470,27 @@ body {
 .slot[data-status="active"],
 .slot[data-status="working"] {
   background: var(--card-raised);
-  border-color: var(--line);
+  border-color: rgba(31, 28, 23, 0.18);
 }
 
+/* Chromium distributes 1px dashed-border dashes terribly around rounded
+   corners (bare straights, bunched arcs), so dashed outlines are drawn as
+   fixed-size SVG backgrounds with an explicit dasharray instead. */
 .slot[data-status="empty"] {
-  background: transparent;
-  border: 1px dashed rgba(255, 255, 255, 0.14);
+  background-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='62'%3E%3Crect x='1' y='1' width='148' height='60' rx='13' fill='none' stroke='rgba(31,28,23,0.32)' stroke-width='1.5' stroke-dasharray='5 6'/%3E%3C/svg%3E");
+  /* The slot keeps a 1px (transparent) border; without border-box origin +
+     no-repeat the fixed-size SVG shifts a pixel, clips, and re-tiles a
+     sliver at the edges. */
+  background-origin: border-box;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .slot[data-status="empty"]:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background-color: rgba(31, 28, 23, 0.04);
 }
 
 .slot-title {
@@ -180,7 +536,7 @@ body {
   height: 5px;
   border-radius: 50%;
   flex: none;
-  background: var(--idle);
+  background: #c9c3b8;
 }
 
 .slot[data-status="active"] .dot {
@@ -210,7 +566,8 @@ body {
   }
 }
 
-/* controls, revealed on hover */
+/* Occupied slots keep their controls visible. The embedded Workbench strip is
+   non-focusable, so hover cannot be the only route to its close affordance. */
 .slot-controls {
   position: absolute;
   top: 6px;
@@ -225,7 +582,17 @@ body {
   opacity: 1;
 }
 
-.slot[data-has-window="false"] .slot-controls {
+.slot:not([data-status="empty"]) .slot-controls {
+  opacity: 1;
+}
+
+.slot[data-status="empty"] .slot-controls {
+  display: none;
+}
+
+/* × shows on every card so any session can be closed; hiding only makes
+   sense for a card that actually has a window. */
+.slot[data-has-window="false"] .ctl-min {
   display: none;
 }
 
@@ -243,7 +610,7 @@ body {
 }
 
 .ctl:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(31, 28, 23, 0.07);
   color: var(--ink);
 }
 
@@ -256,7 +623,7 @@ body {
   height: 9px;
   border-radius: 50%;
   background: var(--accent);
-  border: 2px solid #1e1d1b;
+  border: 2px solid var(--surface);
   opacity: 0;
   pointer-events: none;
   transition: opacity 160ms ease;
@@ -266,15 +633,95 @@ body {
   opacity: 1;
 }
 
+/* Count pill: how many host cards this slot holds. Reuses the gold agent
+   identity color; distinct from the accent notification badge above. */
+.count {
+  position: absolute;
+  bottom: 6px;
+  right: 8px;
+  min-width: 16px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(224, 161, 60, 0.16);
+  color: var(--working);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+@keyframes count-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(224, 161, 60, 0.5);
+  }
+  40% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 7px rgba(224, 161, 60, 0);
+  }
+}
+
+.count.pulse {
+  animation: count-pulse 500ms ease-out;
+}
+
+/* Drop target while a card is trapped over this slot mid-drag. */
+.slot.trap {
+  border-color: var(--working);
+  box-shadow:
+    0 0 0 2px rgba(224, 161, 60, 0.35),
+    0 0 14px rgba(224, 161, 60, 0.25);
+}
+
+/* A saved card flying from the strip's edge into its slot. */
+.save-chip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fffdf9;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  box-shadow: 0 6px 18px rgba(31, 28, 23, 0.25);
+  pointer-events: none;
+  z-index: 50;
+  will-change: transform, opacity;
+  transition:
+    transform 350ms cubic-bezier(0.4, 0, 1, 1),
+    opacity 350ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.save-chip svg {
+  width: 13px;
+  height: 13px;
+}
+
 /* ---- add button ---- */
 
 #addBtn {
   width: var(--add-w);
   height: var(--slot-h);
   flex: none;
-  border: 1px dashed rgba(255, 255, 255, 0.14);
-  border-radius: 12px;
-  background: transparent;
+  border: none;
+  border-radius: 14px;
+  -webkit-app-region: no-drag;
+  background-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='62'%3E%3Crect x='1' y='1' width='42' height='60' rx='13' fill='none' stroke='rgba(31,28,23,0.32)' stroke-width='1.5' stroke-dasharray='5 6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
   color: var(--ink-faint);
   font-size: 20px;
   font-weight: 300;
@@ -285,7 +732,7 @@ body {
 }
 
 #addBtn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background-color: rgba(31, 28, 23, 0.04);
   color: var(--ink);
 }
 
@@ -293,8 +740,197 @@ body {
   transform: scale(0.96);
 }
 
+/* ---- push-to-talk mic — the add button's left-side mirror ----
+   The Lore orb (micButton.ts + loreOrb.ts) is its single mark; the button
+   itself mirrors the add button's dashed tile. Hold to record. */
+
+#micBtn {
+  position: relative;
+  width: var(--mic-w);
+  height: var(--slot-h);
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 14px;
+  -webkit-app-region: no-drag;
+  background-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='62'%3E%3Crect x='1' y='1' width='42' height='60' rx='13' fill='none' stroke='rgba(31,28,23,0.32)' stroke-width='1.5' stroke-dasharray='5 6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  cursor: default;
+  padding: 0;
+  transition: background-color 120ms ease;
+}
+
+#micBtn:hover {
+  background-color: rgba(31, 28, 23, 0.04);
+}
+
+#micBtn[data-orb="recording"] {
+  background-color: rgba(217, 119, 87, 0.08);
+}
+
+.mic-orb {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+  /* Each mood lends the orb its own halo so the sphere reads on the tray. */
+  filter: drop-shadow(0 0 8px rgba(90, 110, 220, 0.4));
+  transition: filter 240ms ease;
+}
+
+#micBtn[data-orb="working"] .mic-orb {
+  filter: drop-shadow(0 0 9px rgba(224, 161, 60, 0.55));
+  animation: mic-orb-breathe 2.2s ease-in-out infinite;
+}
+
+#micBtn[data-orb="recording"] .mic-orb {
+  filter: drop-shadow(0 0 9px rgba(217, 119, 87, 0.55));
+  /* The held voice physically swells the sphere. */
+  transform: scale(calc(1 + var(--level, 0) * 0.22));
+  transition: filter 240ms ease, transform 90ms ease;
+}
+
+#micBtn[data-orb="processing"] .mic-orb {
+  animation: mic-orb-breathe 1.5s ease-in-out infinite;
+}
+
+#micBtn[data-orb="denied"] .mic-orb {
+  filter: none;
+  opacity: 0.7;
+}
+
+@keyframes mic-orb-breathe {
+  0%,
+  100% {
+    transform: scale(0.88);
+    opacity: 0.92;
+  }
+
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+
+/* Terminal burst: the orb dissolves into specks — gold when the agent saved
+   a capture, ink when it simply had nothing to keep. */
+
+.mic-burst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.mic-burst .speck {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  opacity: 0;
+  animation: mic-speck-fly 700ms ease-out forwards;
+  animation-delay: var(--delay, 0ms);
+}
+
+.mic-burst.gold .speck {
+  background: var(--working);
+  box-shadow: 0 0 5px rgba(224, 161, 60, 0.7);
+}
+
+@keyframes mic-speck-fly {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(var(--dx, 0), var(--dy, 0)) scale(0.4);
+    opacity: 0;
+  }
+}
+
+/* The traveling selection ring, ported from the homepage strip: a coral
+   arc orbiting the focused session's slot. */
+@property --ring-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.slot.travel-ring::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 14px;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--ring-angle),
+    rgba(232, 115, 74, 0) 0deg,
+    rgba(232, 115, 74, 0.35) 60deg,
+    var(--accent) 105deg,
+    rgba(232, 115, 74, 0.35) 150deg,
+    rgba(232, 115, 74, 0) 210deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 5;
+  animation: ring-travel 3.2s linear infinite;
+}
+
+@keyframes ring-travel {
+  to {
+    --ring-angle: 360deg;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .slot.travel-ring::after {
+    animation: none;
+    background: rgba(232, 115, 74, 0.55);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #compactHandle[data-state="working"] #handleAttention,
+  #compactHandle[data-state="attention"] #handleAttention {
+    animation: none;
+  }
   .slot[data-status="working"] .dot {
+    animation: none;
+  }
+  .mic-orb,
+  .mic-burst .speck {
+    animation: none;
+    transition: none;
+  }
+  #micBtn[data-orb="recording"] .mic-orb {
+    transform: none;
+  }
+  .count.pulse {
+    animation: none;
+  }
+  .save-chip {
+    transition: none;
+  }
+  .stack-card,
+  .stack-card-sub,
+  .stack-card.snapping,
+  .stack-card.springback {
+    transition: none;
+  }
+  .stack-card.rise {
     animation: none;
   }
 }
